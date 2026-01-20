@@ -15,6 +15,9 @@ void Config::reset() {
   forcePower = 2000.0;
   batterySOC = 0.0;
   batteryPower = 0.0;
+  batteryCapacity = 0.0;
+  batteryProduction = 0.0;
+  batteryConsumption = 0.0;
   mqttServer = "";
   mqttPort = 1883;
   mqttUser = "";
@@ -46,6 +49,13 @@ void Config::load(Preferences& prefs) {
   webUsername = prefs.getString("webUser", "admin");
   webPassword = prefs.getString("webPass", "admin");
 
+  // Battery values
+  batterySOC = prefs.getFloat("battSOC", 0.0f);
+  batteryPower = prefs.getFloat("battPower", 0.0f);
+  batteryCapacity = prefs.getFloat("battCap", 0.0f);
+  batteryProduction = prefs.getFloat("battProd", 0.0f);
+  batteryConsumption = prefs.getFloat("battCons", 0.0f);
+
   // Daily energy tracking
   lastEnergyImport = prefs.getFloat("lastImp", 0.0f);
   lastEnergyExport = prefs.getFloat("lastExp", 0.0f);
@@ -76,6 +86,13 @@ void Config::save(Preferences& prefs) {
   prefs.putBool("useTxReq", useTxReq);
   prefs.putString("webUser", webUsername);
   prefs.putString("webPass", webPassword);
+
+  // Battery values (optional; persisted for reuse)
+  prefs.putFloat("battSOC", batterySOC);
+  prefs.putFloat("battPower", batteryPower);
+  prefs.putFloat("battCap", batteryCapacity);
+  prefs.putFloat("battProd", batteryProduction);
+  prefs.putFloat("battCons", batteryConsumption);
 
   // Daily energy tracking
   prefs.putFloat("lastImp", lastEnergyImport);

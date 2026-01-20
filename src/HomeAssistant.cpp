@@ -13,6 +13,7 @@ HomeAssistant::HomeAssistant(P1Parser* parser, P1Modifier* modifier, Config* con
   _lastPublish = 0;
   _lastDiscovery = 0;
   _mqttPort = 1883;
+  _publishRequested = false;
   
   // Generate unique device ID from MAC address
   uint8_t mac[6];
@@ -68,8 +69,9 @@ void HomeAssistant::loop() {
       reconnect();
     }
   } else {
-    // Publish sensors every 5 seconds
-    if (now - _lastPublish > 5000) {
+    // Publish only when a new P1 telegram was processed
+    if (_publishRequested && (now - _lastPublish > 200)) { // throttle to avoid bursts
+      _publishRequested = false;
       _lastPublish = now;
       publishSensors();
     }
@@ -80,6 +82,10 @@ void HomeAssistant::loop() {
       publishDiscovery();
     }
   }
+}
+
+void HomeAssistant::requestPublish() {
+  _publishRequested = true;
 }
 
 bool HomeAssistant::isConnected() {
@@ -172,9 +178,12 @@ void HomeAssistant::publishDiscovery() {
   publishSensor("Uptime", "uptime", NULL, "s", "mdi:timer-outline");
   publishSensor("Free Heap", "free_heap", NULL, "bytes", "mdi:memory");
   
-  // === Battery Sensors ===
-  publishSensor("Battery SOC", "battery_soc", "battery", "%", "mdi:battery");
-  publishSensor("Battery Power", "battery_power", "power", "W", "mdi:battery-charging");
+  // === Battery Numbers (controllable from HA) ===
+  publishNumber("Battery SOC", "battery_soc", "mdi:battery", 0, 100, 0.1, "%");
+  publishNumber("Battery Power", "battery_power", "mdi:battery-charging", -20000, 20000, 1, "W");
+  publishNumber("Battery Capacity", "battery_capacity", "mdi:battery-high", 0, 100, 0.1, "kWh");
+  publishNumber("Battery Production", "battery_production", "mdi:solar-power", 0, 50000, 1, "W");
+  publishNumber("Battery Consumption", "battery_consumption", "mdi:transmission-tower", 0, 50000, 1, "W");
   
   // === Operation Mode Select ===
   publishSelect("Operation Mode", "operation_mode", "mdi:cog");
@@ -188,6 +197,10 @@ void HomeAssistant::publishDiscovery() {
   
   // === Status Binary Sensor ===
   publishBinarySensor("P1 Data Valid", "p1_valid", "connectivity");
+
+  // === Daily Energy Sensors ===
+  publishSensor("Daily Energy Import", "daily_energy_import", "energy", "kWh", "mdi:counter");
+  publishSensor("Daily Energy Export", "daily_energy_export", "energy", "kWh", "mdi:counter");
   
   Serial.println("Home Assistant discovery published");
 }
@@ -214,7 +227,7 @@ void HomeAssistant::publishSensor(const char* name, const char* objectId,
   identifiers.add(_deviceId);
   device["name"] = "ControlZinvolt P1";
   device["model"] = "ESP32-S3 P1 Controller";
-  device["manufacturer"] = "Leotro Engineering";
+  device["manufacturer"] = "AI";
   
   String payload;
   serializeJson(doc, payload);
@@ -343,37 +356,64 @@ void HomeAssistant::publishSensors() {
   
   JsonDocument doc;
   
+  // Cache values to ensure consistent sign handling per publish cycle
+  float l1Power = _parser->getActivePowerL1();
+  float l2Power = _parser->getActivePowerL2();
+  float l3Power = _parser->getActivePowerL3();
+  float totalPower = l1Power + l2Power + l3Power;
+  float l1Current = _parser->getCurrentL1();
+  float l2Current = _parser->getCurrentL2();
+  float l3Current = _parser->getCurrentL3();
+  float v1 = _parser->getVoltageL1();
+  float v2 = _parser->getVoltageL2();
+  float v3 = _parser->getVoltageL3();
+  
   // P1 Power data
-  doc["total_power"] = round(_parser->getTotalActivePower() * 1000);
-  doc["l1_power"] = round(_parser->getActivePowerL1() * 1000);
-  doc["l2_power"] = round(_parser->getActivePowerL2() * 1000);
-  doc["l3_power"] = round(_parser->getActivePowerL3() * 1000);
+  doc["total_power"] = round(totalPower * 1000);
+  doc["l1_power"] = round(l1Power * 1000);
+  doc["l2_power"] = round(l2Power * 1000);
+  doc["l3_power"] = round(l3Power * 1000);
   
   // Current data
-  doc["l1_current"] = _parser->getCurrentL1();
-  doc["l2_current"] = _parser->getCurrentL2();
-  doc["l3_current"] = _parser->getCurrentL3();
+  doc["l1_current"] = (l1Power >= 0 ? l1Current : -l1Current);
+  doc["l2_current"] = (l2Power >= 0 ? l2Current : -l2Current);
+  doc["l3_current"] = (l3Power >= 0 ? l3Current : -l3Current);
   
   // Voltage data
-  doc["l1_voltage"] = _parser->getVoltageL1();
-  doc["l2_voltage"] = _parser->getVoltageL2();
-  doc["l3_voltage"] = _parser->getVoltageL3();
+  doc["l1_voltage"] = v1;
+  doc["l2_voltage"] = v2;
+  doc["l3_voltage"] = v3;
   
   // Energy data
   doc["energy_import"] = _parser->getTotalEnergyImport();
   doc["energy_export"] = _parser->getTotalEnergyExport();
+
+  // Daily energy (relative to start of day baselines)
+  float dailyImport = 0.0f;
+  float dailyExport = 0.0f;
+  if (_config->dayStartEnergyImport > 0.0f) {
+    dailyImport = max(0.0f, _parser->getTotalEnergyImport() - _config->dayStartEnergyImport);
+  }
+  if (_config->dayStartEnergyExport > 0.0f) {
+    dailyExport = max(0.0f, _parser->getTotalEnergyExport() - _config->dayStartEnergyExport);
+  }
+  doc["daily_energy_import"] = dailyImport;
+  doc["daily_energy_export"] = dailyExport;
   
   // System data
   doc["wifi_rssi"] = WiFi.RSSI();
   doc["uptime"] = millis() / 1000;
   doc["free_heap"] = ESP.getFreeHeap();
   
-  // P1 valid status
-  doc["p1_valid"] = _parser->isValid();
+  // P1 valid status (send as string to match binary_sensor payload_on/payload_off)
+  doc["p1_valid"] = _parser->isValid() ? "true" : "false";
   
   // Battery data (from config)
   doc["battery_soc"] = _config->batterySOC;
   doc["battery_power"] = _config->batteryPower;
+  doc["battery_capacity"] = _config->batteryCapacity;
+  doc["battery_production"] = _config->batteryProduction;
+  doc["battery_consumption"] = _config->batteryConsumption;
   
   // Operation mode
   String modeStr = _modifier->getModeString();
@@ -472,6 +512,35 @@ void HomeAssistant::handleCommand(char* topic, byte* payload, unsigned int lengt
         _config->forcePower = power;
         Serial.printf("Force power set to: %.1f W\n", power);
       }
+    }
+    else if (command == "battery_soc") {
+      float soc = payloadStr.toFloat();
+      if (soc >= 0.0f && soc <= 100.0f) {
+        _config->batterySOC = soc;
+        Serial.printf("Battery SOC set to: %.1f %%\n", soc);
+      }
+    }
+    else if (command == "battery_power") {
+      float p = payloadStr.toFloat();
+      _config->batteryPower = p;
+      Serial.printf("Battery power set to: %.1f W\n", p);
+    }
+    else if (command == "battery_capacity") {
+      float cap = payloadStr.toFloat();
+      if (cap >= 0.0f) {
+        _config->batteryCapacity = cap;
+        Serial.printf("Battery capacity set to: %.2f kWh\n", cap);
+      }
+    }
+    else if (command == "battery_production") {
+      float prod = payloadStr.toFloat();
+      _config->batteryProduction = prod;
+      Serial.printf("Battery production set to: %.1f W\n", prod);
+    }
+    else if (command == "battery_consumption") {
+      float cons = payloadStr.toFloat();
+      _config->batteryConsumption = cons;
+      Serial.printf("Battery consumption set to: %.1f W\n", cons);
     }
     
     // Publish updated state immediately

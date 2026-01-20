@@ -22,6 +22,9 @@ public:
   // Battery status (from external API - future)
   float batterySOC;
   float batteryPower;
+  float batteryCapacity;
+  float batteryProduction;
+  float batteryConsumption;
   
   // MQTT Configuration
   String mqttServer;

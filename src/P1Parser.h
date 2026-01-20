@@ -40,6 +40,7 @@ public:
   
   String getTimestamp() const { return timestamp; }
   bool isValid() const { return valid; }
+  void setValid(bool ok) { valid = ok; }
   
   // Get raw telegram
   String getRawTelegram() const { return rawTelegram; }

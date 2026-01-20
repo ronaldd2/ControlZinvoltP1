@@ -561,13 +561,16 @@ void readP1Task(void* parameter) {
             // Validate CRC of received telegram (with error handling)
             try {
               bool crcValid = P1Parser::validateCRC(buffer);
+              p1Parser.setValid(crcValid);
               if (crcValid) {
                 logPrintln("[READ] CRC validation passed!");
+                homeAssistant.requestPublish();
               } else {
                 logPrintln("[READ] WARNING: CRC validation failed!");
               }
             } catch (...) {
               logPrintln("[READ] CRC validation error");
+              p1Parser.setValid(false);
             }
             
             // Modify telegram based on current mode

@@ -27,6 +27,9 @@ public:
   
   // Main loop - handle MQTT
   void loop();
+
+  // Request a sensor publish (triggered when a new P1 telegram is processed)
+  void requestPublish();
   
   // Check if connected
   bool isConnected();
@@ -58,6 +61,8 @@ private:
   unsigned long _lastReconnect;
   unsigned long _lastPublish;
   unsigned long _lastDiscovery;
+
+  bool _publishRequested;
   
   // Connection management
   void reconnect();
