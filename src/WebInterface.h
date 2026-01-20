@@ -10,10 +10,11 @@
 #include <ArduinoJson.h>
 #include "P1Parser.h"
 #include "P1Modifier.h"
+#include "Config.h"
 
 class WebInterface {
 public:
-  WebInterface(AsyncWebServer* server, P1Parser* parser, P1Modifier* modifier);
+  WebInterface(AsyncWebServer* server, P1Parser* parser, P1Modifier* modifier, Config* config);
   
   void begin();
   
@@ -21,6 +22,7 @@ private:
   AsyncWebServer* _server;
   P1Parser* _parser;
   P1Modifier* _modifier;
+  Config* _config;
   
   // Web page handlers
   void handleRoot(AsyncWebServerRequest* request);
@@ -33,6 +35,10 @@ private:
   void handleSetPower(AsyncWebServerRequest* request);
   void handleGetConfig(AsyncWebServerRequest* request);
   void handleGetP1Data(AsyncWebServerRequest* request);
+  void handleGetMqttConfig(AsyncWebServerRequest* request);
+  void handleSetMqttConfig(AsyncWebServerRequest* request);
+  void handleGetAdvancedConfig(AsyncWebServerRequest* request);
+  void handleSetAdvancedConfig(AsyncWebServerRequest* request);
   
   // Helper functions
   String getHTMLPage();

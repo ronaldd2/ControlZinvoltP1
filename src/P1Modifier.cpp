@@ -127,8 +127,8 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
   modifiedTelegram = modifyObisValue(modifiedTelegram, OBIS_POWER_DELIVERED, totalDelivered > 0 ? totalDelivered : 0.001);
   modifiedTelegram = modifyObisValue(modifiedTelegram, OBIS_POWER_RECEIVED, totalReceived > 0 ? totalReceived : 0.0);
   
-  // Recalculate CRC if needed
-  // Note: Some P1 telegrams have CRC, some don't
+  // Recalculate CRC for the modified telegram
+  modifiedTelegram = recalculateCRC(modifiedTelegram);
   
   return modifiedTelegram;
 }
@@ -179,4 +179,30 @@ String P1Modifier::formatPowerValue(float watts) {
   char buffer[20];
   snprintf(buffer, sizeof(buffer), "%.3f*kW", kw);
   return String(buffer);
+}
+
+// Recalculate and append correct CRC to modified telegram
+String P1Modifier::recalculateCRC(const String& telegram) {
+  if (telegram.length() < 2) {
+    return telegram;  // Telegram too short
+  }
+  
+  // Remove old CRC if present (4 chars after '!')
+  int exclamationPos = telegram.lastIndexOf('!');
+  if (exclamationPos == -1 || exclamationPos < 2) {
+    return telegram;  // No exclamation mark, return as-is
+  }
+  
+  // Extract data up to and including '!'
+  String dataForCRC = telegram.substring(0, exclamationPos + 1);
+  
+  // Calculate new CRC
+  String newCRC = P1Parser::calculateCRC16(dataForCRC);
+  
+  if (newCRC.length() != 4) {
+    return telegram;  // CRC calculation failed
+  }
+  
+  // Append new CRC
+  return dataForCRC + newCRC;
 }

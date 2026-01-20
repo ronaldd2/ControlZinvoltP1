@@ -48,7 +48,7 @@ bool P1Parser::parse(const String& telegram) {
   valid = false;
   
   // Check if telegram starts with '/' and ends with '!'
-  if (!telegram.startsWith("/") || !telegram.endsWith("!")) {
+  if (!telegram.startsWith("/") || (telegram.charAt(telegram.length()-5) != '!')) {
     Serial.println("Invalid P1 telegram format");
     return false;
   }
@@ -134,4 +134,62 @@ float P1Parser::extractValue(const String& line) {
   
   String valueStr = line.substring(startPos + 1, endPos);
   return valueStr.toFloat();
+}
+// CRC16 calculation for P1 telegrams (CRC16-CCITT with polynomial 0xA001)
+String P1Parser::calculateCRC16(const String& data) {
+  if (data.length() == 0) {
+    return "0000";
+  }
+  
+  uint16_t crc = 0x0000;
+  
+  for (int pos = 0; pos < data.length(); pos++) {
+    crc ^= (uint8_t)data[pos];
+    for (int i = 0; i < 8; i++) {
+      if ((crc & 0x0001) != 0) {
+        crc >>= 1;
+        crc ^= 0xA001;
+      } else {
+        crc >>= 1;
+      }
+    }
+  }
+  
+  // Return as 4-character hex string
+  char hexStr[5];
+  sprintf(hexStr, "%04X", crc);
+  return String(hexStr);
+}
+
+// Validate CRC in received telegram
+// Format: /...\ndata\n!CCCC\nwhere CCCC is the CRC
+// CRC is calculated over data from '/' to '!' (NOT including the CRC itself)
+bool P1Parser::validateCRC(const String& telegram) {
+  if (telegram.length() < 6) {
+    return false;  // Telegram too short (min: /x!CCCC)
+  }
+  
+  // Find the last '!' which indicates end of data
+  int exclamationPos = telegram.lastIndexOf('!');
+  if (exclamationPos == -1 || exclamationPos < 1) {
+    return false;  // No exclamation mark
+  }
+  
+  // Extract CRC from telegram (should be 4 chars after '!')
+  if (telegram.length() < exclamationPos + 5) {
+    return false;  // Not enough characters for CRC
+  }
+  
+  String receivedCRC = telegram.substring(exclamationPos + 1, exclamationPos + 5);
+  
+  if (receivedCRC.length() != 4) {
+    return false;  // CRC should be 4 characters
+  }
+  
+  // Calculate CRC for data from '/' to '!' (NOT including the CRC chars after '!')
+  String dataForCRC = telegram.substring(0, exclamationPos + 1);  // Include the '!' in calculation
+  String calculatedCRC = calculateCRC16(dataForCRC);
+  
+  // Compare CRCs (case-insensitive)
+  return receivedCRC.equalsIgnoreCase(calculatedCRC);
 }

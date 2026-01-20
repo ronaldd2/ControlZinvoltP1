@@ -44,6 +44,10 @@ public:
   // Get raw telegram
   String getRawTelegram() const { return rawTelegram; }
   
+  // CRC validation and calculation
+  static String calculateCRC16(const String& data);
+  static bool validateCRC(const String& telegram);
+  
 private:
   // Parsed data fields
   float activePowerL1;

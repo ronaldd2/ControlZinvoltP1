@@ -52,7 +52,7 @@ private:
   String modifyObisValue(const String& telegram, const String& obisCode, float newValue);
   String replaceObisValue(const String& telegram, const String& obisCode, const String& newValue);
   String formatPowerValue(float watts);
-  String calculateChecksum(const String& telegram);
+  String recalculateCRC(const String& telegram);
 };
 
 #endif // P1MODIFIER_H

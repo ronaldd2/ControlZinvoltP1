@@ -3,42 +3,97 @@
  */
 
 #include "WebInterface.h"
+#include <Preferences.h>
 
-WebInterface::WebInterface(AsyncWebServer* server, P1Parser* parser, P1Modifier* modifier) {
+// External references declared in main.cpp
+extern Preferences preferences;
+
+WebInterface::WebInterface(AsyncWebServer* server, P1Parser* parser, P1Modifier* modifier, Config* config) {
   _server = server;
   _parser = parser;
   _modifier = modifier;
+  _config = config;
 }
 
 void WebInterface::begin() {
-  // Serve main page
+  // Serve main page with authentication
   _server->on("/", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    // Check authentication
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleRoot(request);
   });
   
-  // REST API endpoints
+  // REST API endpoints (with authentication)
   _server->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleGetStatus(request);
   });
   
   _server->on("/api/p1data", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleGetP1Data(request);
   });
   
   _server->on("/api/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleSetMode(request);
   });
   
   _server->on("/api/phase", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleSetPhase(request);
   });
   
   _server->on("/api/power", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleSetPower(request);
   });
   
   _server->on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
     handleGetConfig(request);
+  });
+  
+  _server->on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
+    handleGetMqttConfig(request);
+  });
+  
+  _server->on("/api/mqtt", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
+    handleSetMqttConfig(request);
+  });
+  
+  _server->on("/api/advanced", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
+    handleGetAdvancedConfig(request);
+  });
+  
+  _server->on("/api/advanced", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      return request->requestAuthentication();
+    }
+    handleSetAdvancedConfig(request);
   });
   
   // 404 handler
@@ -84,8 +139,17 @@ void WebInterface::handleGetP1Data(AsyncWebServerRequest* request) {
   
   // Energy data
   JsonObject energy = doc["energy"].to<JsonObject>();
-  energy["import"] = _parser->getTotalEnergyImport();
-  energy["export"] = _parser->getTotalEnergyExport();
+    float totalImport = _parser->getTotalEnergyImport();
+    float totalExport = _parser->getTotalEnergyExport();
+    energy["import"] = totalImport;   // lifetime (kWh)
+    energy["export"] = totalExport;   // lifetime (kWh)
+    // Today's values: (current - baseline at day start)
+    float todayImport = totalImport - _config->dayStartEnergyImport;
+    float todayExport = totalExport - _config->dayStartEnergyExport;
+    if (todayImport < 0) todayImport = 0;
+    if (todayExport < 0) todayExport = 0;
+    energy["todayImport"] = todayImport;
+    energy["todayExport"] = todayExport;
   
   String response;
   serializeJson(doc, response);
@@ -182,6 +246,97 @@ void WebInterface::handleGetConfig(AsyncWebServerRequest* request) {
   request->send(200, "application/json", response);
 }
 
+void WebInterface::handleGetMqttConfig(AsyncWebServerRequest* request) {
+  JsonDocument doc;
+  
+  doc["server"] = _config->mqttServer;
+  doc["port"] = _config->mqttPort;
+  doc["user"] = _config->mqttUser;
+  // Don't send password for security
+  doc["hasPassword"] = !_config->mqttPassword.isEmpty();
+  
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
+}
+
+void WebInterface::handleSetMqttConfig(AsyncWebServerRequest* request) {
+  if (!request->hasParam("server", true)) {
+    request->send(400, "application/json", "{\"error\":\"Missing server parameter\"}");
+    return;
+  }
+  
+  _config->mqttServer = request->getParam("server", true)->value();
+  _config->mqttPort = request->hasParam("port", true) ? 
+                      request->getParam("port", true)->value().toInt() : 1883;
+  
+  if (request->hasParam("user", true)) {
+    _config->mqttUser = request->getParam("user", true)->value();
+  }
+  
+  if (request->hasParam("password", true)) {
+    String pwd = request->getParam("password", true)->value();
+    if (!pwd.isEmpty()) {
+      _config->mqttPassword = pwd;
+    }
+  }
+  
+  // Save to NVS
+  _config->save(preferences);
+  
+  // Trigger MQTT reconnection via callback in main.cpp
+  extern void reconnectMqtt();
+  reconnectMqtt();
+
+  Serial.println("MQTT configuration updated:");
+  Serial.printf("  Server: %s:%d\n", _config->mqttServer.c_str(), _config->mqttPort);
+  Serial.printf("  User: %s\n", _config->mqttUser.c_str());
+  
+  request->send(200, "application/json", 
+                "{\"success\":true,\"message\":\"MQTT config saved. Device will reconnect.\"}");
+}
+
+void WebInterface::handleGetAdvancedConfig(AsyncWebServerRequest* request) {
+  JsonDocument doc;
+  
+  doc["useTxReq"] = _config->useTxReq;
+  doc["webUsername"] = _config->webUsername;
+  // Don't send password for security
+  doc["hasPassword"] = !_config->webPassword.isEmpty();
+  
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
+}
+
+void WebInterface::handleSetAdvancedConfig(AsyncWebServerRequest* request) {
+  if (request->hasParam("useTxReq", true)) {
+    String value = request->getParam("useTxReq", true)->value();
+    _config->useTxReq = (value == "true" || value == "1");
+  }
+  
+  if (request->hasParam("webUsername", true)) {
+    _config->webUsername = request->getParam("webUsername", true)->value();
+  }
+  
+  if (request->hasParam("webPassword", true)) {
+    String pwd = request->getParam("webPassword", true)->value();
+    if (!pwd.isEmpty()) {
+      _config->webPassword = pwd;
+    }
+  }
+  
+  // Save to NVS
+  _config->save(preferences);
+  
+  Serial.println("Advanced configuration updated");
+  Serial.printf("  Use TXREQ: %s\n", _config->useTxReq ? "Yes" : "No");
+  Serial.printf("  Web Username: %s\n", _config->webUsername.c_str());
+  
+  request->send(200, "application/json", 
+                "{\"success\":true,\"message\":\"Advanced settings saved.\"}");
+}
+
 void WebInterface::handleNotFound(AsyncWebServerRequest* request) {
   request->send(404, "text/plain", "Not found");
 }
@@ -199,6 +354,10 @@ String WebInterface::getStatusJSON() {
   doc["wifi"]["ssid"] = WiFi.SSID();
   doc["wifi"]["ip"] = WiFi.localIP().toString();
   doc["wifi"]["rssi"] = WiFi.RSSI();
+  
+  // MQTT status - get from main.cpp
+  extern bool getMqttConnected();
+  doc["mqtt"]["connected"] = getMqttConnected();
   
   // P1 parser status
   doc["p1"]["valid"] = _parser->isValid();
@@ -388,33 +547,53 @@ String WebInterface::getHTMLPage() {
                     <div class="metric-value" id="totalPower">0<span class="metric-unit">W</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Phase L1</div>
+                    <div class="metric-label">Phase L1 Power</div>
                     <div class="metric-value" id="powerL1">0<span class="metric-unit">W</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Phase L2</div>
+                    <div class="metric-label">Phase L2 Power</div>
                     <div class="metric-value" id="powerL2">0<span class="metric-unit">W</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Phase L3</div>
+                    <div class="metric-label">Phase L3 Power</div>
                     <div class="metric-value" id="powerL3">0<span class="metric-unit">W</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Voltage L1</div>
-                    <div class="metric-value" id="voltageL1">0<span class="metric-unit">V</span></div>
+                    <div class="metric-label">Energy Consumed Today</div>
+                    <div class="metric-value" id="energyImport">0<span class="metric-unit">kWh</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Voltage L2</div>
-                    <div class="metric-value" id="voltageL2">0<span class="metric-unit">V</span></div>
+                    <div class="metric-label">Energy Produced Today</div>
+                    <div class="metric-value" id="energyExport">0<span class="metric-unit">kWh</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Voltage L3</div>
-                    <div class="metric-value" id="voltageL3">0<span class="metric-unit">V</span></div>
+                    <div class="metric-label">Current L1 / L2 / L3</div>
+                    <div class="metric-value" style="font-size: 1.0em;" id="currentAll">0 / 0 / 0<span class="metric-unit">A</span></div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Current Mode</div>
                     <div class="metric-value" style="font-size: 1.2em;" id="currentMode">Loading...</div>
                 </div>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 12px; background: #f0f0f0; border-radius: 6px; font-size: 0.85em;">
+                <details>
+                    <summary style="cursor: pointer; font-weight: 500; color: #666;">⚡ Voltage Details (if available)</summary>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;">
+                        <div style="padding: 8px; background: white; border-radius: 4px;">
+                            <div style="font-size: 0.9em; color: #888;">L1</div>
+                            <div style="font-weight: bold;" id="voltageL1">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
+                        </div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;">
+                            <div style="font-size: 0.9em; color: #888;">L2</div>
+                            <div style="font-weight: bold;" id="voltageL2">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
+                        </div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;">
+                            <div style="font-size: 0.9em; color: #888;">L3</div>
+                            <div style="font-weight: bold;" id="voltageL3">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
+                        </div>
+                    </div>
+                </details>
             </div>
         </div>
 
@@ -478,7 +657,68 @@ String WebInterface::getHTMLPage() {
                     <div class="metric-label">WiFi Signal</div>
                     <div class="metric-value" id="wifiRSSI">0<span class="metric-unit">dBm</span></div>
                 </div>
+                <div class="metric">
+                    <div class="metric-label">MQTT Status</div>
+                    <div class="metric-value" style="font-size: 1.2em;" id="mqttStatus">-</div>
+                </div>
             </div>
+        </div>
+
+        <div class="card">
+            <h2>🏠 Home Assistant / MQTT Configuration</h2>
+            
+            <div class="control-group">
+                <label>MQTT Broker Address</label>
+                <input type="text" id="mqttServer" placeholder="homeassistant.local or 192.168.1.100">
+            </div>
+
+            <div class="control-group">
+                <label>MQTT Port</label>
+                <input type="number" id="mqttPort" value="1883" min="1" max="65535">
+            </div>
+
+            <div class="control-group">
+                <label>MQTT Username (optional)</label>
+                <input type="text" id="mqttUser" placeholder="Leave empty for no auth">
+            </div>
+
+            <div class="control-group">
+                <label>MQTT Password (optional)</label>
+                <input type="password" id="mqttPassword" placeholder="Leave empty to keep current">
+            </div>
+
+            <button onclick="saveMqttConfig()">Save MQTT Configuration</button>
+            
+            <div id="mqttStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
+        </div>
+
+        <div class="card">
+            <h2>⚙️ Advanced Settings</h2>
+            
+            <div class="control-group">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="useTxReq" style="width: auto;">
+                    <span>Enable TXREQ Pin Check (EN Pin)</span>
+                </label>
+                <small style="color: #666; margin-top: 5px; display: block;">
+                    Only enable if your P1 output device uses the TXREQ (EN) pin on GPIO41. 
+                    Most devices don't need this.
+                </small>
+            </div>
+
+            <div class="control-group">
+                <label>Web Username</label>
+                <input type="text" id="webUsername" placeholder="admin">
+            </div>
+
+            <div class="control-group">
+                <label>Web Password</label>
+                <input type="password" id="webPassword" placeholder="Leave empty to keep current">
+            </div>
+
+            <button onclick="saveAdvancedSettings()">Save Advanced Settings</button>
+            
+            <div id="advancedStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
         </div>
     </div>
 
@@ -498,9 +738,22 @@ String WebInterface::getHTMLPage() {
                     document.getElementById('powerL2').innerHTML = Math.round(p1Data.power.l2 * 1000) + '<span class="metric-unit">W</span>';
                     document.getElementById('powerL3').innerHTML = Math.round(p1Data.power.l3 * 1000) + '<span class="metric-unit">W</span>';
                     
-                    document.getElementById('voltageL1').innerHTML = p1Data.voltage.l1.toFixed(1) + '<span class="metric-unit">V</span>';
-                    document.getElementById('voltageL2').innerHTML = p1Data.voltage.l2.toFixed(1) + '<span class="metric-unit">V</span>';
-                    document.getElementById('voltageL3').innerHTML = p1Data.voltage.l3.toFixed(1) + '<span class="metric-unit">V</span>';
+                    // Energy data (today)
+                    const todayImport = (p1Data.energy && p1Data.energy.todayImport != null) ? p1Data.energy.todayImport : p1Data.energy.import;
+                    const todayExport = (p1Data.energy && p1Data.energy.todayExport != null) ? p1Data.energy.todayExport : p1Data.energy.export;
+                    document.getElementById('energyImport').innerHTML = todayImport.toFixed(2) + '<span class="metric-unit">kWh</span>';
+                    document.getElementById('energyExport').innerHTML = todayExport.toFixed(2) + '<span class="metric-unit">kWh</span>';
+                    
+                    // Combined current display
+                    document.getElementById('currentAll').innerHTML = 
+                        p1Data.current.l1.toFixed(1) + ' / ' + 
+                        p1Data.current.l2.toFixed(1) + ' / ' + 
+                        p1Data.current.l3.toFixed(1) + '<span class="metric-unit">A</span>';
+                    
+                    // Voltage data (less prominent, in collapsible section)
+                    document.getElementById('voltageL1').innerHTML = p1Data.voltage.l1 > 0 ? p1Data.voltage.l1.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>' : '-';
+                    document.getElementById('voltageL2').innerHTML = p1Data.voltage.l2 > 0 ? p1Data.voltage.l2.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>' : '-';
+                    document.getElementById('voltageL3').innerHTML = p1Data.voltage.l3 > 0 ? p1Data.voltage.l3.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>' : '-';
                 }
 
                 // Fetch status
@@ -512,6 +765,11 @@ String WebInterface::getHTMLPage() {
                 document.getElementById('wifiSSID').textContent = statusData.wifi.ssid;
                 document.getElementById('ipAddress').textContent = statusData.wifi.ip;
                 document.getElementById('wifiRSSI').innerHTML = statusData.wifi.rssi + '<span class="metric-unit">dBm</span>';
+                
+                // MQTT status
+                const mqttConnected = statusData.mqtt && statusData.mqtt.connected;
+                document.getElementById('mqttStatus').textContent = mqttConnected ? '✓ Connected' : '✗ Disconnected';
+                document.getElementById('mqttStatus').style.color = mqttConnected ? '#28a745' : '#dc3545';
                 
                 // Fetch config
                 const configResponse = await fetch('/api/config');
@@ -526,6 +784,33 @@ String WebInterface::getHTMLPage() {
                 updatePhaseButtons();
             } catch (error) {
                 console.error('Error fetching data:', error);
+            }
+        }
+        
+        async function loadMqttConfig() {
+            // Load MQTT config only once (not on every refresh)
+            try {
+                const mqttResponse = await fetch('/api/mqtt');
+                const mqttData = await mqttResponse.json();
+                document.getElementById('mqttServer').value = mqttData.server || '';
+                document.getElementById('mqttPort').value = mqttData.port || 1883;
+                document.getElementById('mqttUser').value = mqttData.user || '';
+                // Don't populate password field for security
+            } catch (error) {
+                console.error('Error fetching MQTT config:', error);
+            }
+        }
+        
+        async function loadAdvancedConfig() {
+            // Load advanced config only once (not on every refresh)
+            try {
+                const response = await fetch('/api/advanced');
+                const data = await response.json();
+                document.getElementById('useTxReq').checked = data.useTxReq || false;
+                document.getElementById('webUsername').value = data.webUsername || 'admin';
+                // Don't populate password field for security
+            } catch (error) {
+                console.error('Error fetching advanced config:', error);
             }
         }
 
@@ -604,8 +889,101 @@ String WebInterface::getHTMLPage() {
             }
         }
 
+        async function saveMqttConfig() {
+            const server = document.getElementById('mqttServer').value;
+            const port = document.getElementById('mqttPort').value;
+            const user = document.getElementById('mqttUser').value;
+            const password = document.getElementById('mqttPassword').value;
+            
+            if (!server) {
+                showMqttStatus('Please enter MQTT broker address', false);
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('server', server);
+            formData.append('port', port);
+            if (user) formData.append('user', user);
+            if (password) formData.append('password', password);
+            
+            try {
+                const response = await fetch('/api/mqtt', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showMqttStatus('MQTT configuration saved! Device will reconnect...', true);
+                    // Clear password field after successful save
+                    document.getElementById('mqttPassword').value = '';
+                    // Restart device after 2 seconds
+                    setTimeout(() => {
+                        showMqttStatus('Restarting device to apply changes...', true);
+                        setTimeout(() => location.reload(), 3000);
+                    }, 2000);
+                } else {
+                    showMqttStatus('Error: ' + (data.error || 'Unknown error'), false);
+                }
+            } catch (error) {
+                showMqttStatus('Error saving MQTT config: ' + error, false);
+            }
+        }
+
+        function showMqttStatus(message, success) {
+            const statusDiv = document.getElementById('mqttStatus');
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = success ? '#d4edda' : '#f8d7da';
+            statusDiv.style.color = success ? '#155724' : '#721c24';
+        }
+
+        async function saveAdvancedSettings() {
+            const useTxReq = document.getElementById('useTxReq').checked;
+            const webUsername = document.getElementById('webUsername').value;
+            const webPassword = document.getElementById('webPassword').value;
+            
+            if (!webUsername) {
+                showAdvancedStatus('Please enter a username', false);
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('useTxReq', useTxReq ? 'true' : 'false');
+            formData.append('webUsername', webUsername);
+            if (webPassword) formData.append('webPassword', webPassword);
+            
+            try {
+                const response = await fetch('/api/advanced', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    showAdvancedStatus('Settings saved! If you changed the password, you may need to log in again.', true);
+                    // Clear password field after successful save
+                    document.getElementById('webPassword').value = '';
+                } else {
+                    showAdvancedStatus('Error: ' + (data.error || 'Unknown error'), false);
+                }
+            } catch (error) {
+                showAdvancedStatus('Error saving settings: ' + error, false);
+            }
+        }
+
+        function showAdvancedStatus(message, success) {
+            const statusDiv = document.getElementById('advancedStatus');
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = success ? '#d4edda' : '#f8d7da';
+            statusDiv.style.color = success ? '#155724' : '#721c24';
+        }
+
         // Update data every 2 seconds
         fetchData();
+        loadMqttConfig(); // Load MQTT config once on page load
+        loadAdvancedConfig(); // Load advanced config once on page load
         setInterval(fetchData, 2000);
     </script>
 </body>

@@ -23,6 +23,28 @@ public:
   float batterySOC;
   float batteryPower;
   
+  // MQTT Configuration
+  String mqttServer;
+  int mqttPort;
+  String mqttUser;
+  String mqttPassword;
+  
+  // Hardware Configuration
+  bool useTxReq;  // Enable TXREQ pin check before sending
+  
+  // Web Interface Authentication
+  String webUsername;
+  String webPassword;
+
+  // Energy tracking (persisted daily baselines and last readings)
+  float lastEnergyImport;
+  float lastEnergyExport;
+  float dayStartEnergyImport;
+  float dayStartEnergyExport;
+  String dayStartDate; // YYYYMMDD
+  String lastTimestamp;
+  String lastTelegram;
+  
   // Load configuration from NVS
   void load(Preferences& prefs);
   
