@@ -6,7 +6,9 @@
 #define WEBINTERFACE_H
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <ESPAsyncWebServer.h>
+#include <Update.h>
 #include <ArduinoJson.h>
 #include "P1Parser.h"
 #include "P1Modifier.h"
@@ -28,6 +30,7 @@ private:
   void handleRoot(AsyncWebServerRequest* request);
   void handleActualsPage(AsyncWebServerRequest* request);
   void handleSettingsPage(AsyncWebServerRequest* request);
+  void handleUpdatePage(AsyncWebServerRequest* request);
   void handleNotFound(AsyncWebServerRequest* request);
   
   // REST API handlers
@@ -47,6 +50,7 @@ private:
   // Helper functions
   String getActualsPage();
   String getSettingsPage();
+  String getUpdatePage();
   String getStatusJSON();
 };
 

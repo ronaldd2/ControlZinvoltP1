@@ -31,6 +31,9 @@
 #include "Config.h"
 #include "HomeAssistant.h"
 #include "AlphaESSClient.h"
+#include "P1Tasks.h"
+#include "TCPServer.h"
+#include "Version.h"
 
 // Hardware Serial for P1 Port (ESP32-S3)
 #define P1_RX_PIN 1   // GPIO1 (Input RX from smart meter)
@@ -94,15 +97,10 @@ TaskHandle_t p1RelayTask;
 void setupWiFi();
 void setupOTA();
 void setupWebServer();
-void setupTCPServer();
 void setupTelnetServer();
 void handleTelnetClient();
 void logPrint(const String& msg);
 void logPrintln(const String& msg);
-void readP1Task(void* parameter);
-void relayP1Task(void* parameter);
-void acceptTCPClients();
-void broadcastP1Data(const String& telegram);
 
 void setup() {
   Serial.begin(115200);
@@ -251,7 +249,7 @@ void loop() {
     logPrint("Status - Mode: ");
     logPrint(p1Modifier.getModeString());
     logPrint(", TCP: ");
-    logPrint(String(tcpClients.size()));
+    logPrint(String(getTCPClientCount()));
     logPrint(", MQTT: ");
     logPrint(homeAssistant.isConnected() ? "OK" : "X");
     logPrint(" (server: ");
@@ -368,22 +366,6 @@ void setupWebServer() {
   logPrintln("Web server started");
 }
 
-void setupTCPServer() {
-  logPrintln("Setting up TCP servers for P1 streaming...");
-  
-  // Original P1 data server (sync WiFiServer)
-  tcpServer.begin();
-  logPrint("TCP server (original) started on port ");
-  logPrintln(String(P1_TCP_PORT));
-  
-  // Modified P1 data server - TEMPORARILY DISABLED due to crash
-  // TODO: Re-enable after fixing initialization issue
-  // tcpModifiedServer.onClient(&handleNewModifiedTCPClient, NULL);
-  // tcpModifiedServer.begin();
-  // logPrint("TCP server (modified) started on port ");
-  // logPrintln(String(P1_MODIFIED_TCP_PORT));
-}
-
 void setupTelnetServer() {
   telnetServer.begin();
   telnetServer.setNoDelay(true);
@@ -425,275 +407,4 @@ void logPrintln(const String& msg) {
   }
 }
 
-void acceptTCPClients() {
-  // Accept new clients if pending
-  if (tcpServer.hasClient()) {
-    WiFiClient newClient = tcpServer.available();
-    if (newClient) {
-      newClient.setNoDelay(true);
-      logPrint("New TCP client connected: ");
-      logPrintln(newClient.remoteIP().toString());
-      tcpClients.push_back(newClient);
-    }
-  }
 
-  // Drop disconnected clients
-  for (auto it = tcpClients.begin(); it != tcpClients.end(); ) {
-    if (!it->connected()) {
-      it = tcpClients.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-void broadcastP1Data(const String& telegram) {
-  // Broadcast to all connected TCP clients (original data)
-  if (tcpClients.empty()) return;  // No clients connected
-  
-  for (auto it = tcpClients.begin(); it != tcpClients.end(); ) {
-    if (!it->connected()) {
-      it = tcpClients.erase(it);
-      continue;
-    }
-    size_t written = it->write((const uint8_t*)telegram.c_str(), telegram.length());
-    if (written != telegram.length()) {
-      // if write failed, drop client to avoid blocking
-      it = tcpClients.erase(it);
-    } else {
-      ++it;
-    }
-  }
-}
-
-void readP1Task(void* parameter) {
-  String buffer = "";
-  unsigned long lastDebugTime = 0;
-  unsigned long lastDataTime = 0;
-  int telegramCount = 0;
-  bool inTelegram = false;  // Track if we're currently receiving a telegram
-  int crcCharsRead = 0;     // Track CRC chars after '!'
-  
-  logPrintln("[READ] Task started - synchronizing with P1 stream...");
-  
-  while (true) {
-    // Accept any pending TCP clients
-    acceptTCPClients();
-
-    // Debug output every 5 seconds
-    if (millis() - lastDebugTime > 5000) {
-      int available = P1_SERIAL.available();
-      logPrint("[READ] Status - Available bytes: ");
-      logPrint(String(available));
-      logPrint(", Buffer size: ");
-      logPrint(String(buffer.length()));
-      logPrint(", InTelegram: ");
-      logPrint(String(inTelegram));
-      logPrint(", Telegrams: ");
-      logPrint(String(telegramCount));
-      logPrint(", Last data: ");
-      logPrint(String((millis() - lastDataTime) / 1000));
-      logPrintln(" sec ago");
-      lastDebugTime = millis();
-    }
-    
-    // Read incoming P1 data
-    while (P1_SERIAL.available()) {
-      char c = P1_SERIAL.read();
-      lastDataTime = millis();
-      
-      // Look for telegram start
-      if (c == '/') {
-        // Start of new telegram
-        buffer = "/";  // Reset buffer and start fresh
-        inTelegram = true;
-        crcCharsRead = 0;
-        logPrintln("[READ] Telegram start '/' detected");
-        continue;
-      }
-      
-      // Only buffer data if we're in a telegram
-      if (inTelegram) {
-        buffer += c;
-        
-        // P1 telegram ends with '!' followed by 4 CRC hex characters
-        if (c == '!') {
-          crcCharsRead = 1;  // Reset CRC counter when we hit '!'
-          continue;  // Don't process yet, wait for CRC
-        }
-        
-        // After '!', collect exactly 4 CRC characters
-        if (crcCharsRead) {  
-          crcCharsRead++;
-          
-          if (crcCharsRead == 5) {
-            // We have the complete telegram with CRC
-            logPrintln("[READ] Telegram end with CRC detected");
-            telegramCount++;
-            logPrint("[READ] Processing telegram #");
-            logPrint(String(telegramCount));
-            logPrint(" (");
-            logPrint(String(buffer.length()));
-            logPrintln(" bytes)");
-            
-            digitalWrite(LED_PIN, HIGH);
-            // Parse the telegram
-            p1Parser.parse(buffer);
-
-            // Update daily energy baseline once per day (at date change)
-            // Derive a date key from the P1 timestamp; supports formats like YYYY-MM-DD... or YYMMDD...
-            String ts = p1Parser.getTimestamp();
-            String dateKey = "";
-            if (ts.length() >= 10 && ts.charAt(4) == '-' && ts.charAt(7) == '-') {
-              // Format: YYYY-MM-DD ...
-              dateKey = ts.substring(0, 10);
-            } else if (ts.length() >= 8) {
-              // Fallback: first 8 chars, e.g., YYMMDDhh or YYYYMMDD
-              dateKey = ts.substring(0, 8);
-            }
-
-            // On first telegram of the day (or if empty), set day baseline and persist once
-            if (dateKey.length() > 0 && dateKey != config.dayStartDate) {
-              config.dayStartDate = dateKey;
-              config.dayStartEnergyImport = p1Parser.getTotalEnergyImport();
-              config.dayStartEnergyExport = p1Parser.getTotalEnergyExport();
-              config.save(preferences);
-              logPrint("Daily baseline set: ");
-              logPrint(dateKey);
-              logPrint(" (import=");
-              logPrint(String(config.dayStartEnergyImport, 3));
-              logPrint(" kWh, export=");
-              logPrint(String(config.dayStartEnergyExport, 3));
-              logPrintln(" kWh)");
-            }
-            
-            // Broadcast original data to TCP clients
-            broadcastP1Data(buffer);
-            
-            // Validate CRC of received telegram (with error handling)
-            try {
-              bool crcValid = P1Parser::validateCRC(buffer);
-              p1Parser.setValid(crcValid);
-              if (crcValid) {
-                logPrintln("[READ] CRC validation passed!");
-                
-                // Fetch battery data from AlphaESS (throttled to 10s internally)
-                if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
-                  String p1Timestamp = p1Parser.getTimestamp();
-                  if (alphaESS.fetchBatteryData(p1Timestamp)) {
-                    logPrint("[READ] AlphaESS: SOC=");
-                    logPrint(String(alphaESS.getSOC(), 1));
-                    logPrint("%, BattPower=");
-                    logPrint(String(alphaESS.getBatteryPower()));
-                    logPrint("W, GridPower=");
-                    logPrint(String(alphaESS.getGridPower()));
-                    logPrintln("W");
-                  }
-                }
-                
-                homeAssistant.requestPublish();
-              } else {
-                logPrintln("[READ] WARNING: CRC validation failed!");
-              }
-            } catch (...) {
-              logPrintln("[READ] CRC validation error");
-              p1Parser.setValid(false);
-            }
-            
-            // Modify telegram based on current mode (pass battery power for proper modification)
-            String modifiedTelegram = p1Modifier.modify(buffer, p1Parser, config.batteryPower);
-            
-            // Parse modified telegram to extract modified power values
-            P1Parser modifiedParser;
-            modifiedParser.parse(modifiedTelegram);
-            config.modifiedPowerL1 = modifiedParser.getActivePowerL1();
-            config.modifiedPowerL2 = modifiedParser.getActivePowerL2();
-            config.modifiedPowerL3 = modifiedParser.getActivePowerL3();
-            config.totalModifiedPower = modifiedParser.getTotalActivePower();
-
-            // Snapshot the actual values at the same time for UI sync
-            config.actualPowerL1 = p1Parser.getActivePowerL1();
-            config.actualPowerL2 = p1Parser.getActivePowerL2();
-            config.actualPowerL3 = p1Parser.getActivePowerL3();
-            config.actualTotalPower = p1Parser.getTotalActivePower();
-            
-            // Store for relay
-            currentP1Telegram = modifiedTelegram;
-            telegramComplete = true;
-            telegramSent = false;
-            
-            logPrint("[READ] Telegram processed - Original: ");
-            logPrint(String(buffer.length()));
-            logPrint(" bytes, Modified: ");
-            logPrint(String(modifiedTelegram.length()));
-            logPrintln(" bytes");
-            
-            logPrintln("[READ] P1 telegram received and processed");
-            // Blink LED on message reception
-            delay(50);
-            digitalWrite(LED_PIN, LOW);
-            
-            // Clear buffer and reset state for next telegram
-            buffer = "";
-            inTelegram = false;
-            crcCharsRead = 0;
-          }
-        }
-        
-        // Prevent buffer overflow
-        if (buffer.length() > 2048) {
-          logPrintln("[READ] WARNING: Buffer overflow, resetting");
-          buffer = "";
-          inTelegram = false;
-          crcCharsRead = 0;
-        }
-      }
-    }
-    
-    // Shorter delay for faster polling (1ms instead of 10ms)
-    vTaskDelay(1 / portTICK_PERIOD_MS);
-  }
-}
-
-void relayP1Task(void* parameter) {
-  unsigned long lastDebugTime = 0;
-  
-  logPrintln("[RELAY] Task started");
-  
-  while (true) {
-    // Debug output every 5 seconds
-    if (millis() - lastDebugTime > 5000) {
-      logPrint("[RELAY] Status - telegramComplete: ");
-      logPrint(String(telegramComplete));
-      logPrint(", telegramSent: ");
-      logPrint(String(telegramSent));
-      logPrint(", TX_REQ: ");
-      logPrintln(String(digitalRead(TX_REQ_PIN)));
-      lastDebugTime = millis();
-    }
-    
-    // Wait for complete telegram and check if not already sent
-    if (telegramComplete && !telegramSent) {
-      logPrintln("[RELAY] Processing telegram for transmission");
-      
-      // Check if TX request is high (P1 protocol requirement) - if enabled
-      bool canSend = !config.useTxReq || (digitalRead(TX_REQ_PIN) == HIGH);
-      
-      if (canSend) {
-        logPrintln("[RELAY] Sending modified telegram...");
-        // Send modified telegram to P1 output
-        P1_SERIAL.print(currentP1Telegram);
-        
-        // Mark as sent to prevent duplicate transmission
-        telegramSent = true;
-        telegramComplete = false;
-        
-        logPrintln("[RELAY] Modified P1 telegram sent");
-      } else {
-        logPrintln("[RELAY] Waiting for TX_REQ to go HIGH");
-      }
-    }
-    
-    vTaskDelay(100 / portTICK_PERIOD_MS);
-  }
-}
