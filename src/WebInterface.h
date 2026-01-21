@@ -26,6 +26,8 @@ private:
   
   // Web page handlers
   void handleRoot(AsyncWebServerRequest* request);
+  void handleActualsPage(AsyncWebServerRequest* request);
+  void handleSettingsPage(AsyncWebServerRequest* request);
   void handleNotFound(AsyncWebServerRequest* request);
   
   // REST API handlers
@@ -39,9 +41,12 @@ private:
   void handleSetMqttConfig(AsyncWebServerRequest* request);
   void handleGetAdvancedConfig(AsyncWebServerRequest* request);
   void handleSetAdvancedConfig(AsyncWebServerRequest* request);
+  void handleGetEvaConfig(AsyncWebServerRequest* request);
+  void handleSetEvaConfig(AsyncWebServerRequest* request);
   
   // Helper functions
-  String getHTMLPage();
+  String getActualsPage();
+  String getSettingsPage();
   String getStatusJSON();
 };
 

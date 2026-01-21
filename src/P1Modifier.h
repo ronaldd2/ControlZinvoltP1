@@ -12,11 +12,11 @@
 
 enum OperationMode {
   MODE_UNMODIFIED,        // Forward without modification
-  MODE_OFF,               // Prevent charging/discharging (show zero power)
+  MODE_OFF,               // Prevent charging/discharging (gradual power reduction)
   MODE_FORCE_CHARGE,      // Force charging (show high consumption)
   MODE_FORCE_DISCHARGE,   // Force discharging (show high generation)
-  MODE_CHARGE_ONLY,       // Only allow charging (future)
-  MODE_DISCHARGE_ONLY     // Only allow discharging (future)
+  MODE_CHARGE_ONLY,       // Only allow charging (gradual discharge reduction)
+  MODE_DISCHARGE_ONLY     // Only allow discharging (gradual charge reduction)
 };
 
 class P1Modifier {
@@ -24,7 +24,7 @@ public:
   P1Modifier();
   
   // Modify a P1 telegram based on current mode
-  String modify(const String& originalTelegram, const P1Parser& parser);
+  String modify(const String& originalTelegram, const P1Parser& parser, float batteryPower = 0);
   
   // Mode management
   void setMode(OperationMode mode) { currentMode = mode; }

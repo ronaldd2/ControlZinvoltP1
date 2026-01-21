@@ -18,10 +18,22 @@ void Config::reset() {
   batteryCapacity = 0.0;
   batteryProduction = 0.0;
   batteryConsumption = 0.0;
+  modifiedPowerL1 = 0.0;
+  modifiedPowerL2 = 0.0;
+  modifiedPowerL3 = 0.0;
+  totalModifiedPower = 0.0;
+  actualPowerL1 = 0.0;
+  actualPowerL2 = 0.0;
+  actualPowerL3 = 0.0;
+  actualTotalPower = 0.0;
   mqttServer = "";
   mqttPort = 1883;
   mqttUser = "";
   mqttPassword = "";
+  evaEnabled = false;
+  evaSerialNumber = "";
+  evaAppId = "";
+  evaAppSecret = "";
   useTxReq = false;  // Default: don't check TXREQ (compatible with most devices)
   webUsername = "admin";
   webPassword = "admin";
@@ -45,6 +57,10 @@ void Config::load(Preferences& prefs) {
   mqttPort = prefs.getInt("mqttPort", 1883);
   mqttUser = prefs.getString("mqttUser", "");
   mqttPassword = prefs.getString("mqttPass", "");
+  evaEnabled = prefs.getBool("evaEnabled", false);
+  evaSerialNumber = prefs.getString("evaSN", "");
+  evaAppId = prefs.getString("evaAppId", "");
+  evaAppSecret = prefs.getString("evaSecret", "");
   useTxReq = prefs.getBool("useTxReq", false);
   webUsername = prefs.getString("webUser", "admin");
   webPassword = prefs.getString("webPass", "admin");
@@ -83,6 +99,10 @@ void Config::save(Preferences& prefs) {
   prefs.putInt("mqttPort", mqttPort);
   prefs.putString("mqttUser", mqttUser);
   prefs.putString("mqttPass", mqttPassword);
+  prefs.putBool("evaEnabled", evaEnabled);
+  prefs.putString("evaSN", evaSerialNumber);
+  prefs.putString("evaAppId", evaAppId);
+  prefs.putString("evaSecret", evaAppSecret);
   prefs.putBool("useTxReq", useTxReq);
   prefs.putString("webUser", webUsername);
   prefs.putString("webPass", webPassword);

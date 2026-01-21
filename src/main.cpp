@@ -30,6 +30,7 @@
 #include "WebInterface.h"
 #include "Config.h"
 #include "HomeAssistant.h"
+#include "AlphaESSClient.h"
 
 // Hardware Serial for P1 Port (ESP32-S3)
 #define P1_RX_PIN 1   // GPIO1 (Input RX from smart meter)
@@ -61,6 +62,7 @@ P1Modifier p1Modifier;
 Config config;
 WebInterface webInterface(&server, &p1Parser, &p1Modifier, &config);
 HomeAssistant homeAssistant(&p1Parser, &p1Modifier, &config);
+AlphaESSClient alphaESS(&config);
 
 // Callback for WebInterface to access HomeAssistant
 void reconnectMqtt() {
@@ -163,6 +165,16 @@ void setup() {
     logPrintln("MQTT configured from settings");
   } else {
     logPrintln("MQTT not configured - use web interface to set up");
+  }
+  
+  // Initialize AlphaESS client for battery data
+  if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
+    alphaESS.begin();
+    logPrintln("AlphaESS client initialized:");
+    logPrint("  Serial: ");
+    logPrintln(config.evaSerialNumber);
+  } else {
+    logPrintln("AlphaESS integration disabled - enable in settings");
   }
   
   // Setup web server
@@ -564,6 +576,21 @@ void readP1Task(void* parameter) {
               p1Parser.setValid(crcValid);
               if (crcValid) {
                 logPrintln("[READ] CRC validation passed!");
+                
+                // Fetch battery data from AlphaESS (throttled to 10s internally)
+                if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
+                  String p1Timestamp = p1Parser.getTimestamp();
+                  if (alphaESS.fetchBatteryData(p1Timestamp)) {
+                    logPrint("[READ] AlphaESS: SOC=");
+                    logPrint(String(alphaESS.getSOC(), 1));
+                    logPrint("%, BattPower=");
+                    logPrint(String(alphaESS.getBatteryPower()));
+                    logPrint("W, GridPower=");
+                    logPrint(String(alphaESS.getGridPower()));
+                    logPrintln("W");
+                  }
+                }
+                
                 homeAssistant.requestPublish();
               } else {
                 logPrintln("[READ] WARNING: CRC validation failed!");
@@ -573,8 +600,22 @@ void readP1Task(void* parameter) {
               p1Parser.setValid(false);
             }
             
-            // Modify telegram based on current mode
-            String modifiedTelegram = p1Modifier.modify(buffer, p1Parser);
+            // Modify telegram based on current mode (pass battery power for proper modification)
+            String modifiedTelegram = p1Modifier.modify(buffer, p1Parser, config.batteryPower);
+            
+            // Parse modified telegram to extract modified power values
+            P1Parser modifiedParser;
+            modifiedParser.parse(modifiedTelegram);
+            config.modifiedPowerL1 = modifiedParser.getActivePowerL1();
+            config.modifiedPowerL2 = modifiedParser.getActivePowerL2();
+            config.modifiedPowerL3 = modifiedParser.getActivePowerL3();
+            config.totalModifiedPower = modifiedParser.getTotalActivePower();
+
+            // Snapshot the actual values at the same time for UI sync
+            config.actualPowerL1 = p1Parser.getActivePowerL1();
+            config.actualPowerL2 = p1Parser.getActivePowerL2();
+            config.actualPowerL3 = p1Parser.getActivePowerL3();
+            config.actualTotalPower = p1Parser.getTotalActivePower();
             
             // Store for relay
             currentP1Telegram = modifiedTelegram;

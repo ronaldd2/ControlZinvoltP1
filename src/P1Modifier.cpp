@@ -33,13 +33,16 @@ String P1Modifier::getModeString() const {
   }
 }
 
-String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser) {
+String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser, float batteryPower) {
   // If unmodified mode, return original
   if (currentMode == MODE_UNMODIFIED) {
     return originalTelegram;
   }
   
   String modifiedTelegram = originalTelegram;
+  
+  // Add random noise (-1, 0, +1 W) to make battery see value changes
+  float noise = (random(-1000, 1001) / 1000.0) / 1000.0;  // Convert to kW
   
   // Determine which OBIS codes to modify based on modifyPhase
   String obisDelivered, obisReceived;
@@ -69,41 +72,51 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       return originalTelegram;
   }
   
+  // Calculate battery contribution (in kW)
+  float batteryContribution = (batteryPower / 1000.0);  // Convert W to kW
+  
   // Modify based on mode
   float newPowerDelivered = currentPowerDelivered;
   float newPowerReceived = currentPowerReceived;
   
   switch (currentMode) {
     case MODE_OFF:
-      // Show zero power (no charging/discharging)
-      newPowerDelivered = 0.001;  // Small value to avoid division by zero
-      newPowerReceived = 0.0;
+      // Gradual power reduction - halve battery contribution
+      if (batteryContribution > 0) {  // Battery discharging
+        newPowerDelivered = currentPowerDelivered - (batteryContribution / 2.0) + noise;
+      } else if (batteryContribution < 0) {  // Battery charging
+        newPowerReceived = currentPowerReceived + (batteryContribution / 2.0) + noise;
+      }
+      if (newPowerDelivered < 0.001) newPowerDelivered = 0.001;
+      if (newPowerReceived < 0) newPowerReceived = 0.0;
       break;
       
     case MODE_FORCE_CHARGE:
-      // Show high consumption to force charging
-      newPowerDelivered = currentPowerDelivered + (forcePower / 1000.0);  // Convert W to kW
-      newPowerReceived = 0.0;
+      // Show high export to force charging (house → grid)
+      newPowerDelivered = 0.001;
+      newPowerReceived = currentPowerReceived + (forcePower / 1000.0) + noise;  // Convert W to kW
+      if (newPowerReceived < 0) newPowerReceived = 0.0;
       break;
       
     case MODE_FORCE_DISCHARGE:
-      // Show high generation to force discharging
-      newPowerDelivered = 0.001;
-      newPowerReceived = currentPowerReceived + (forcePower / 1000.0);  // Convert W to kW
+      // Show high import to force discharging (grid → house)
+      newPowerDelivered = currentPowerDelivered + (forcePower / 1000.0) + noise;  // Convert W to kW
+      if (newPowerDelivered < 0.001) newPowerDelivered = 0.001;
+      newPowerReceived = 0.0;
       break;
       
     case MODE_CHARGE_ONLY:
-      // Only allow charging (future - needs battery SOC info)
-      if (currentPowerReceived > 0) {
-        newPowerReceived = 0.0;
-      }
+      // Only allow charging - suppress export
+      newPowerDelivered = currentPowerDelivered + noise;
+      if (newPowerDelivered < 0.001) newPowerDelivered = 0.001;
+      newPowerReceived = 0.0;
       break;
       
     case MODE_DISCHARGE_ONLY:
-      // Only allow discharging (future - needs battery SOC info)
-      if (currentPowerDelivered > currentPowerReceived) {
-        newPowerDelivered = currentPowerReceived;
-      }
+      // Only allow discharging - suppress import
+      newPowerDelivered = 0.001;
+      newPowerReceived = currentPowerReceived + noise;
+      if (newPowerReceived < 0) newPowerReceived = 0.0;
       break;
       
     default:

@@ -181,6 +181,7 @@ void HomeAssistant::publishDiscovery() {
   // === Battery Numbers (controllable from HA) ===
   publishNumber("Battery SOC", "battery_soc", "mdi:battery", 0, 100, 0.1, "%");
   publishNumber("Battery Power", "battery_power", "mdi:battery-charging", -20000, 20000, 1, "W");
+  publishSensor("Grid Power", "grid_power", NULL, "W", "mdi:transmission-tower");
   publishNumber("Battery Capacity", "battery_capacity", "mdi:battery-high", 0, 100, 0.1, "kWh");
   publishNumber("Battery Production", "battery_production", "mdi:solar-power", 0, 50000, 1, "W");
   publishNumber("Battery Consumption", "battery_consumption", "mdi:transmission-tower", 0, 50000, 1, "W");
@@ -411,6 +412,7 @@ void HomeAssistant::publishSensors() {
   // Battery data (from config)
   doc["battery_soc"] = _config->batterySOC;
   doc["battery_power"] = _config->batteryPower;
+  doc["grid_power"] = _config->gridPower;
   doc["battery_capacity"] = _config->batteryCapacity;
   doc["battery_production"] = _config->batteryProduction;
   doc["battery_consumption"] = _config->batteryConsumption;
