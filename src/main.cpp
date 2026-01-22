@@ -188,6 +188,7 @@ void setup() {
   p1Modifier.setMode(config.operationMode);
   p1Modifier.setBatteryPhase(config.batteryPhase);
   p1Modifier.setModifyPhase(config.modifyPhase);
+  p1Modifier.setForcePower(config.forcePower);
   
   // Create tasks for P1 reading and relaying
   xTaskCreatePinnedToCore(

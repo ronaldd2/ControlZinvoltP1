@@ -18,7 +18,9 @@ P1Modifier::P1Modifier() {
   currentMode = MODE_UNMODIFIED;
   batteryPhase = 1;
   modifyPhase = 1;
-  forcePower = 3000.0;  // Default 3kW
+  forcePower = 2000.0;  // Default 2kW
+  externalControlPower = 0.0;
+  externalControlLastUpdate = 0;
 }
 
 String P1Modifier::getModeString() const {
@@ -29,6 +31,7 @@ String P1Modifier::getModeString() const {
     case MODE_FORCE_DISCHARGE: return "Force Discharge";
     case MODE_CHARGE_ONLY: return "Charge Only";
     case MODE_DISCHARGE_ONLY: return "Discharge Only";
+    case MODE_EXTERNAL_CONTROL: return "External Control";
     default: return "Unknown";
   }
 }
@@ -38,108 +41,71 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
   if (currentMode == MODE_UNMODIFIED) {
     return originalTelegram;
   }
-  
   String modifiedTelegram = originalTelegram;
   
-  // Add random noise (-1, 0, +1 W) to make battery see value changes
-  float noise = (random(-1000, 1001) / 1000.0) / 1000.0;  // Convert to kW
-  
-  // Determine which OBIS codes to modify based on modifyPhase
-  String obisDelivered, obisReceived;
-  float currentPowerDelivered = 0;
-  float currentPowerReceived = 0;
-  
-  switch (modifyPhase) {
-    case 1:
-      obisDelivered = OBIS_POWER_DELIVERED_L1;
-      obisReceived = OBIS_POWER_RECEIVED_L1;
-      currentPowerDelivered = parser.getActivePowerL1() > 0 ? parser.getActivePowerL1() : 0;
-      currentPowerReceived = parser.getActivePowerL1() < 0 ? -parser.getActivePowerL1() : 0;
-      break;
-    case 2:
-      obisDelivered = OBIS_POWER_DELIVERED_L2;
-      obisReceived = OBIS_POWER_RECEIVED_L2;
-      currentPowerDelivered = parser.getActivePowerL2() > 0 ? parser.getActivePowerL2() : 0;
-      currentPowerReceived = parser.getActivePowerL2() < 0 ? -parser.getActivePowerL2() : 0;
-      break;
-    case 3:
-      obisDelivered = OBIS_POWER_DELIVERED_L3;
-      obisReceived = OBIS_POWER_RECEIVED_L3;
-      currentPowerDelivered = parser.getActivePowerL3() > 0 ? parser.getActivePowerL3() : 0;
-      currentPowerReceived = parser.getActivePowerL3() < 0 ? -parser.getActivePowerL3() : 0;
-      break;
-    default:
-      return originalTelegram;
+  float activePowerWatt[4];
+  float newPowerWatt[4] = {0, 0, 0, 0};
+  for (int phase = 0; phase <=3; phase++) {
+    activePowerWatt[phase] = parser.getActivePower(phase)*1000.0; // Convert kW to W  
   }
-  
-  // Calculate battery contribution (in kW)
-  float batteryContribution = (batteryPower / 1000.0);  // Convert W to kW
-  
-  // Modify based on mode
-  float newPowerDelivered = currentPowerDelivered;
-  float newPowerReceived = currentPowerReceived;
+
+  // Add random noise (-1, 0, +1 W) to make battery see value changes
+  if (++_noise > 1) _noise = -1; // Cycle through -1, 0, +1
+
+  newPowerWatt[0] = (activePowerWatt[0]) + _noise; // Start with total power plus noise
+
   
   switch (currentMode) {
     case MODE_OFF:
       // Gradual power reduction - halve battery contribution
-      if (batteryContribution > 0) {  // Battery discharging
-        newPowerDelivered = currentPowerDelivered - (batteryContribution / 2.0) + noise;
-      } else if (batteryContribution < 0) {  // Battery charging
-        newPowerReceived = currentPowerReceived + (batteryContribution / 2.0) + noise;
-      }
-      if (newPowerDelivered < 0.001) newPowerDelivered = 0.001;
-      if (newPowerReceived < 0) newPowerReceived = 0.0;
+      newPowerWatt[0] -= (batteryPower / 4.0);
       break;
       
     case MODE_FORCE_CHARGE:
       // Show high export to force charging (house → grid)
-      newPowerDelivered = 0.001;
-      newPowerReceived = currentPowerReceived + (forcePower / 1000.0) + noise;  // Convert W to kW
-      if (newPowerReceived < 0) newPowerReceived = 0.0;
+      newPowerWatt[0] = -forcePower - (batteryPower / 4.0);  // Convert W to kW
       break;
       
     case MODE_FORCE_DISCHARGE:
       // Show high import to force discharging (grid → house)
-      newPowerDelivered = currentPowerDelivered + (forcePower / 1000.0) + noise;  // Convert W to kW
-      if (newPowerDelivered < 0.001) newPowerDelivered = 0.001;
-      newPowerReceived = 0.0;
+      newPowerWatt[0] = forcePower + (batteryPower / 4.0);  // Convert W to kW
       break;
       
     case MODE_CHARGE_ONLY:
       // Only allow charging - suppress export
-      newPowerDelivered = currentPowerDelivered + noise;
-      if (newPowerDelivered < 0.001) newPowerDelivered = 0.001;
-      newPowerReceived = 0.0;
+      if (batteryPower < 0) {
+        newPowerWatt[0] -= (batteryPower / 4.0); // Reduce export
+      }
       break;
       
     case MODE_DISCHARGE_ONLY:
       // Only allow discharging - suppress import
-      newPowerDelivered = 0.001;
-      newPowerReceived = currentPowerReceived + noise;
-      if (newPowerReceived < 0) newPowerReceived = 0.0;
+      if (batteryPower > 0) {
+        newPowerWatt[0] -= (batteryPower / 4.0); // Reduce import
+      }
       break;
       
+    case MODE_EXTERNAL_CONTROL:
+      // External control via REST API
+      if (isExternalControlValid()) {
+        // External control is valid (received within 60 seconds)
+        newPowerWatt[0] = externalControlPower;
+      }
+      break;     
     default:
       break;
   }
-  
-  // Apply modifications
-  modifiedTelegram = modifyObisValue(modifiedTelegram, obisDelivered, newPowerDelivered);
-  modifiedTelegram = modifyObisValue(modifiedTelegram, obisReceived, newPowerReceived);
-  
-  // Also update total power values
-  float totalDelivered = parser.getActivePowerL1() + parser.getActivePowerL2() + parser.getActivePowerL3();
-  float totalReceived = parser.getActivePowerDeliveredL1() + parser.getActivePowerDeliveredL2() + parser.getActivePowerDeliveredL3();
-  
-  // Adjust totals based on phase modification
-  if (modifyPhase == 1) {
-    totalDelivered = totalDelivered - currentPowerDelivered + newPowerDelivered;
-    totalReceived = totalReceived - currentPowerReceived + newPowerReceived;
+  // Distribute new power across phases
+  if (modifyPhase != batteryPhase) {
+    newPowerWatt[batteryPhase] = activePowerWatt[batteryPhase];
   }
-  
-  modifiedTelegram = modifyObisValue(modifiedTelegram, OBIS_POWER_DELIVERED, totalDelivered > 0 ? totalDelivered : 0.001);
-  modifiedTelegram = modifyObisValue(modifiedTelegram, OBIS_POWER_RECEIVED, totalReceived > 0 ? totalReceived : 0.0);
-  
+  newPowerWatt[modifyPhase] = newPowerWatt[0] - newPowerWatt[batteryPhase];
+
+  // Apply modifications
+  for (int phase = 0; phase <=3; phase++) {
+    modifiedTelegram = modifyObisPhase(modifiedTelegram, phase, newPowerWatt[phase]);    
+  }
+
   // Recalculate CRC for the modified telegram
   modifiedTelegram = recalculateCRC(modifiedTelegram);
   
@@ -185,6 +151,41 @@ String P1Modifier::modifyObisValue(const String& telegram, const String& obisCod
                   telegram.substring(closeParen);
   
   return result;
+}
+
+String P1Modifier::modifyObisPhase(const String& originalTelegram, uint8_t phase, float newPowerWatt) {
+  String modifiedTelegram = originalTelegram;
+  
+  String obisDelivered;
+  String obisReceived;
+  
+  switch (phase) {
+    case 0:
+      obisDelivered = OBIS_POWER_DELIVERED;
+      obisReceived = OBIS_POWER_RECEIVED;
+      break;
+    case 1:
+      obisDelivered = OBIS_POWER_DELIVERED_L1;
+      obisReceived = OBIS_POWER_RECEIVED_L1;
+      break;
+    case 2:
+      obisDelivered = OBIS_POWER_DELIVERED_L2;
+      obisReceived = OBIS_POWER_RECEIVED_L2;
+      break;
+    case 3:
+      obisDelivered = OBIS_POWER_DELIVERED_L3;
+      obisReceived = OBIS_POWER_RECEIVED_L3;
+      break;
+    default:
+      return originalTelegram; // Invalid phase
+  }
+  
+  float newPowerkWatt = newPowerWatt / 1000.0;
+  
+  modifiedTelegram = modifyObisValue(modifiedTelegram, obisDelivered, newPowerkWatt > 0 ? newPowerkWatt : 0.0);
+  modifiedTelegram = modifyObisValue(modifiedTelegram, obisReceived, newPowerkWatt < 0 ? -newPowerkWatt : 0.0);
+  
+  return modifiedTelegram;
 }
 
 String P1Modifier::formatPowerValue(float watts) {

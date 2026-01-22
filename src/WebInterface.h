@@ -46,6 +46,7 @@ private:
   void handleSetAdvancedConfig(AsyncWebServerRequest* request);
   void handleGetEvaConfig(AsyncWebServerRequest* request);
   void handleSetEvaConfig(AsyncWebServerRequest* request);
+  void handleSetExternalControl(AsyncWebServerRequest* request);
   
   // Helper functions
   String getActualsPage();

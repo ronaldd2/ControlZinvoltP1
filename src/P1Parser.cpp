@@ -26,26 +26,26 @@
 #define OBIS_POWER_RECEIVED_L3 "1-0:62.7.0"
 
 P1Parser::P1Parser() {
-  valid = false;
-  activePowerL1 = 0;
-  activePowerL2 = 0;
-  activePowerL3 = 0;
-  activePowerDeliveredL1 = 0;
-  activePowerDeliveredL2 = 0;
-  activePowerDeliveredL3 = 0;
-  totalEnergyImport = 0;
-  totalEnergyExport = 0;
-  currentL1 = 0;
-  currentL2 = 0;
-  currentL3 = 0;
-  voltageL1 = 0;
-  voltageL2 = 0;
-  voltageL3 = 0;
+  _valid = false;
+  _activePowerL1 = 0;
+  _activePowerL2 = 0;
+  _activePowerL3 = 0;
+  _activePowerDeliveredL1 = 0;
+  _activePowerDeliveredL2 = 0;
+  _activePowerDeliveredL3 = 0;
+  _totalEnergyImport = 0;
+  _totalEnergyExport = 0;
+  _currentL1 = 0;
+  _currentL2 = 0;
+  _currentL3 = 0;
+  _voltageL1 = 0;
+  _voltageL2 = 0;
+  _voltageL3 = 0;
 }
 
 bool P1Parser::parse(const String& telegram) {
-  rawTelegram = telegram;
-  valid = false;
+  _rawTelegram = telegram;
+  _valid = false;
   
   // Check if telegram starts with '/' and ends with '!'
   if (!telegram.startsWith("/") || (telegram.charAt(telegram.length()-5) != '!')) {
@@ -54,7 +54,7 @@ bool P1Parser::parse(const String& telegram) {
   }
   
   // Extract values using OBIS codes
-  timestamp = extractObisValue(telegram, OBIS_TIMESTAMP);
+  _timestamp = extractObisValue(telegram, OBIS_TIMESTAMP);
   
   // Energy totals
   String energyImport1 = extractObisValue(telegram, OBIS_ENERGY_IMPORT_TARIFF1);
@@ -62,35 +62,35 @@ bool P1Parser::parse(const String& telegram) {
   String energyExport1 = extractObisValue(telegram, OBIS_ENERGY_EXPORT_TARIFF1);
   String energyExport2 = extractObisValue(telegram, OBIS_ENERGY_EXPORT_TARIFF2);
   
-  totalEnergyImport = energyImport1.toFloat() + energyImport2.toFloat();
-  totalEnergyExport = energyExport1.toFloat() + energyExport2.toFloat();
+  _totalEnergyImport = energyImport1.toFloat() + energyImport2.toFloat();
+  _totalEnergyExport = energyExport1.toFloat() + energyExport2.toFloat();
   
   // Voltages
-  voltageL1 = extractObisValue(telegram, OBIS_VOLTAGE_L1).toFloat();
-  voltageL2 = extractObisValue(telegram, OBIS_VOLTAGE_L2).toFloat();
-  voltageL3 = extractObisValue(telegram, OBIS_VOLTAGE_L3).toFloat();
+  _voltageL1 = extractObisValue(telegram, OBIS_VOLTAGE_L1).toFloat();
+  _voltageL2 = extractObisValue(telegram, OBIS_VOLTAGE_L2).toFloat();
+  _voltageL3 = extractObisValue(telegram, OBIS_VOLTAGE_L3).toFloat();
   
   // Currents
-  currentL1 = extractObisValue(telegram, OBIS_CURRENT_L1).toFloat();
-  currentL2 = extractObisValue(telegram, OBIS_CURRENT_L2).toFloat();
-  currentL3 = extractObisValue(telegram, OBIS_CURRENT_L3).toFloat();
+  _currentL1 = extractObisValue(telegram, OBIS_CURRENT_L1).toFloat();
+  _currentL2 = extractObisValue(telegram, OBIS_CURRENT_L2).toFloat();
+  _currentL3 = extractObisValue(telegram, OBIS_CURRENT_L3).toFloat();
   
   // Active power per phase (consumption - positive)
-  activePowerL1 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L1).toFloat();
-  activePowerL2 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L2).toFloat();
-  activePowerL3 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L3).toFloat();
+  _activePowerL1 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L1).toFloat();
+  _activePowerL2 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L2).toFloat();
+  _activePowerL3 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L3).toFloat();
   
   // Power delivered back (generation - negative for consumption calculation)
-  activePowerDeliveredL1 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L1).toFloat();
-  activePowerDeliveredL2 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L2).toFloat();
-  activePowerDeliveredL3 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L3).toFloat();
+  _activePowerDeliveredL1 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L1).toFloat();
+  _activePowerDeliveredL2 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L2).toFloat();
+  _activePowerDeliveredL3 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L3).toFloat();
   
   // Calculate net power (positive = consuming, negative = generating)
-  activePowerL1 -= activePowerDeliveredL1;
-  activePowerL2 -= activePowerDeliveredL2;
-  activePowerL3 -= activePowerDeliveredL3;
+  _activePowerL1 -= _activePowerDeliveredL1;
+  _activePowerL2 -= _activePowerDeliveredL2;
+  _activePowerL3 -= _activePowerDeliveredL3;
   
-  valid = true;
+  _valid = true;
   return true;
 }
 

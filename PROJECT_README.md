@@ -18,6 +18,7 @@ This project uses the [Universal P1 Port Dongle](https://github.com/Leotro-Engin
   - Force Discharge - Force battery discharging (configurable power)
   - Charge Only - Only allow charging (future)
   - Discharge Only - Only allow discharging (future)
+  - External Control - Remote control via REST API with 60-second timeout fallback
 * **Phase Control** - Select battery phase and which phase to modify
 * **WiFi Configuration Portal** - Easy setup with WiFiManager
 * **REST API** - Control via HTTP GET requests
@@ -119,7 +120,7 @@ Returns current operation mode, phases, and force power settings.
 
 ### Set Operation Mode
 ```
-GET /api/mode?value=[0-5]
+GET /api/mode?value=[0-6]
 ```
 - `0` = Unmodified
 - `1` = Off
@@ -127,6 +128,17 @@ GET /api/mode?value=[0-5]
 - `3` = Force Discharge
 - `4` = Charge Only (future)
 - `5` = Discharge Only (future)
+- `6` = External Control
+
+### Set External Control Power
+```
+GET /api/external?value=[watts]
+```
+Sets power level in Watts for external control mode. When in External Control mode:
+- Positive values force charging (same as Force Charge)
+- Negative values force discharging (same as Force Discharge)
+- P1 telegrams are sent immediately after receiving the value
+- If no value is received for more than 60 seconds, telegrams relay original P1 data unmodified
 
 ### Set Phase
 ```

@@ -56,89 +56,57 @@ void WebInterface::begin() {
         handleUpdatePage(request);
     });
   
-  // REST API endpoints (with authentication)
+  // REST API endpoints (no authentication required)
   _server->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleGetStatus(request);
   });
   
   _server->on("/api/p1data", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleGetP1Data(request);
   });
   
   _server->on("/api/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleSetMode(request);
   });
   
   _server->on("/api/phase", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleSetPhase(request);
   });
   
   _server->on("/api/power", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleSetPower(request);
   });
   
   _server->on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleGetConfig(request);
   });
   
   _server->on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleGetMqttConfig(request);
   });
   
   _server->on("/api/mqtt", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleSetMqttConfig(request);
   });
   
   _server->on("/api/advanced", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleGetAdvancedConfig(request);
   });
   
   _server->on("/api/advanced", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleSetAdvancedConfig(request);
   });
   
   _server->on("/api/eva", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleGetEvaConfig(request);
   });
   
   _server->on("/api/eva", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
-      return request->requestAuthentication();
-    }
     handleSetEvaConfig(request);
+  });
+  
+  _server->on("/api/external", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    handleSetExternalControl(request);
   });
   
   // 404 handler
@@ -295,12 +263,14 @@ void WebInterface::handleSetMode(AsyncWebServerRequest* request) {
   
   int mode = request->getParam("value")->value().toInt();
   
-  if (mode < 0 || mode > 5) {
-    request->send(400, "application/json", "{\"error\":\"Invalid mode value\"}");
+  if (mode < 0 || mode > 6) {
+    request->send(400, "application/json", "{\"error\":\"Invalid mode value (0-6)\"}");
     return;
   }
   
   _modifier->setMode((OperationMode)mode);
+  _config->operationMode = (OperationMode)mode;
+  _config->save(preferences);
   
   Serial.printf("Mode changed to: %s\n", _modifier->getModeString().c_str());
   
@@ -361,6 +331,8 @@ void WebInterface::handleSetPower(AsyncWebServerRequest* request) {
   }
   
   _modifier->setForcePower(power);
+  _config->forcePower = power;
+  _config->save(preferences);
   
   Serial.printf("Force power set to: %.1f W\n", power);
   
@@ -577,5 +549,38 @@ String WebInterface::getSettingsPage() {
 
 String WebInterface::getUpdatePage() {
   return ::getUpdatePage();
+}
+
+void WebInterface::handleSetExternalControl(AsyncWebServerRequest* request) {
+  if (!request->hasParam("value")) {
+    request->send(400, "application/json", "{\"error\":\"Missing value parameter\"}");
+    return;
+  }
+  
+  float power = request->getParam("value")->value().toFloat();
+  
+  // Validate power value is within reasonable range (-20000W to 20000W)
+  if (power < -20000.0f || power > 20000.0f) {
+    request->send(400, "application/json", "{\"error\":\"Power value out of range (-20000 to 20000)\"}");
+    return;
+  }
+  
+  // Set external control power and update timestamp
+  _modifier->setExternalControlPower(power);
+  
+  Serial.printf("[WEB] External control power set to: %.1f W\n", power);
+  
+  // Return confirmation with current mode info
+  JsonDocument doc;
+  doc["success"] = true;
+  doc["externalPower"] = power;
+  doc["mode"] = _modifier->getMode();
+  doc["modeString"] = _modifier->getModeString();
+  doc["timeoutSeconds"] = 60;
+  doc["info"] = "External control value received. Will auto-relay after 60 seconds if no new value received.";
+  
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
 }
 

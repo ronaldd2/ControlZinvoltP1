@@ -16,7 +16,8 @@ enum OperationMode {
   MODE_FORCE_CHARGE,      // Force charging (show high consumption)
   MODE_FORCE_DISCHARGE,   // Force discharging (show high generation)
   MODE_CHARGE_ONLY,       // Only allow charging (gradual discharge reduction)
-  MODE_DISCHARGE_ONLY     // Only allow discharging (gradual charge reduction)
+  MODE_DISCHARGE_ONLY,    // Only allow discharging (gradual charge reduction)
+  MODE_EXTERNAL_CONTROL   // External REST API control
 };
 
 class P1Modifier {
@@ -25,6 +26,7 @@ public:
   
   // Modify a P1 telegram based on current mode
   String modify(const String& originalTelegram, const P1Parser& parser, float batteryPower = 0);
+
   
   // Mode management
   void setMode(OperationMode mode) { currentMode = mode; }
@@ -42,14 +44,24 @@ public:
   void setForcePower(float watts) { forcePower = watts; }
   float getForcePower() const { return forcePower; }
   
+  // External control settings
+  void setExternalControlPower(float watts) { externalControlPower = watts; externalControlLastUpdate = millis(); }
+  float getExternalControlPower() const { return externalControlPower; }
+  unsigned long getExternalControlLastUpdate() const { return externalControlLastUpdate; }
+  bool isExternalControlValid() const { return (millis() - externalControlLastUpdate) < 60000; }
+  
 private:
   OperationMode currentMode;
   int batteryPhase;      // Phase where battery is connected (1, 2, or 3)
   int modifyPhase;       // Phase to modify power on (1, 2, or 3)
   float forcePower;      // Power value for force modes (Watts)
+  float externalControlPower;  // Power value from external REST API (Watts)
+  unsigned long externalControlLastUpdate;  // Timestamp of last external control update
+  uint8_t _noise;        // Noise value for power variation
   
   // Helper functions
   String modifyObisValue(const String& telegram, const String& obisCode, float newValue);
+  String modifyObisPhase(const String& originalTelegram, uint8_t phase, float newPowerWatt); 
   String replaceObisValue(const String& telegram, const String& obisCode, const String& newValue);
   String formatPowerValue(float watts);
   String recalculateCRC(const String& telegram);

@@ -176,6 +176,7 @@ String getSettingsPage() {
                     <option value="3">Force Discharge</option>
                     <option value="4">Charge Only</option>
                     <option value="5">Discharge Only</option>
+                    <option value="6">External Control</option>
                 </select>
                 <button onclick="setMode()">Set Mode</button>
             </div>

@@ -136,7 +136,7 @@ void readP1Task(void* parameter) {
               p1Parser.setValid(false);
             }
             
-            String modifiedTelegram = p1Modifier.modify(buffer, p1Parser, config.batteryPower);
+            String modifiedTelegram = p1Modifier.modify(buffer, p1Parser, config.gridPower);
             
             P1Parser modifiedParser;
             modifiedParser.parse(modifiedTelegram);
