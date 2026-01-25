@@ -189,6 +189,7 @@ void setup() {
   p1Modifier.setBatteryPhase(config.batteryPhase);
   p1Modifier.setModifyPhase(config.modifyPhase);
   p1Modifier.setForcePower(config.forcePower);
+
   
   // Create tasks for P1 reading and relaying
   xTaskCreatePinnedToCore(
@@ -236,6 +237,11 @@ void loop() {
   
   // Handle Home Assistant MQTT
   homeAssistant.loop();
+  
+  // Handle AlphaESS battery data fetching (periodic)
+  alphaESS.loop();
+  
+
   
   // Handle telnet logging client
   handleTelnetClient();

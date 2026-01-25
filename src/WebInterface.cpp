@@ -97,12 +97,24 @@ void WebInterface::begin() {
     handleSetAdvancedConfig(request);
   });
   
+  _server->on("/api/reboot", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    handleReboot(request);
+  });
+  
   _server->on("/api/eva", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetEvaConfig(request);
   });
   
   _server->on("/api/eva", HTTP_POST, [this](AsyncWebServerRequest* request) {
     handleSetEvaConfig(request);
+  });
+  
+  _server->on("/api/selfuse", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    handleGetSelfUseConfig(request);
+  });
+  
+  _server->on("/api/selfuse", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    handleSetSelfUseConfig(request);
   });
   
   _server->on("/api/external", HTTP_GET, [this](AsyncWebServerRequest* request) {
@@ -263,8 +275,8 @@ void WebInterface::handleSetMode(AsyncWebServerRequest* request) {
   
   int mode = request->getParam("value")->value().toInt();
   
-  if (mode < 0 || mode > 6) {
-    request->send(400, "application/json", "{\"error\":\"Invalid mode value (0-6)\"}");
+  if (mode < 0 || mode > 7) {
+    request->send(400, "application/json", "{\"error\":\"Invalid mode value (0-7)\"}");
     return;
   }
   
@@ -444,6 +456,20 @@ void WebInterface::handleSetAdvancedConfig(AsyncWebServerRequest* request) {
                 "{\"success\":true,\"message\":\"Advanced settings saved.\"}");
 }
 
+void WebInterface::handleReboot(AsyncWebServerRequest* request) {
+  JsonDocument doc;
+  doc["success"] = true;
+  doc["message"] = "Device rebooting";
+
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
+
+  Serial.println("[WEB] Reboot requested via API");
+  delay(200);
+  ESP.restart();
+}
+
 void WebInterface::handleGetEvaConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
@@ -487,6 +513,52 @@ void WebInterface::handleSetEvaConfig(AsyncWebServerRequest* request) {
   
   request->send(200, "application/json", 
                 "{\"success\":true,\"message\":\"AlphaESS settings saved.\"}");
+}
+
+void WebInterface::handleGetSelfUseConfig(AsyncWebServerRequest* request) {
+  JsonDocument doc;
+  
+  doc["threshold"] = _config->selfUseLimitThreshold;
+  doc["smoothingFactor"] = _config->selfUseSmoothingFactor;
+  doc["currentMode"] = _modifier->getMode();
+  doc["modeString"] = _modifier->getModeString();
+  
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
+}
+
+void WebInterface::handleSetSelfUseConfig(AsyncWebServerRequest* request) {
+  bool updated = false;
+  
+  if (request->hasParam("threshold", true)) {
+    float threshold = request->getParam("threshold", true)->value().toFloat();
+    if (threshold >= 0 && threshold <= 1000) {
+      _config->selfUseLimitThreshold = threshold;
+      _modifier->setSelfUseLimitThreshold(threshold);
+      updated = true;
+      Serial.printf("Self-use limit threshold set to: %.1f W\n", threshold);
+    }
+  }
+  
+  if (request->hasParam("smoothingFactor", true)) {
+    float factor = request->getParam("smoothingFactor", true)->value().toFloat();
+    if (factor >= 0.1f && factor <= 1.0f) {
+      _config->selfUseSmoothingFactor = factor;
+      _modifier->setSelfUseLimitSmoothing(factor);
+      updated = true;
+      Serial.printf("Self-use smoothing factor set to: %.2f\n", factor);
+    }
+  }
+  
+  if (updated) {
+    _config->save(preferences);
+    request->send(200, "application/json", 
+                  "{\"success\":true,\"message\":\"Self-use limiter settings saved.\"}");
+  } else {
+    request->send(400, "application/json", 
+                  "{\"error\":\"No valid parameters provided\"}");
+  }
 }
 
 void WebInterface::handleNotFound(AsyncWebServerRequest* request) {

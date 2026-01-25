@@ -44,8 +44,11 @@ private:
   void handleSetMqttConfig(AsyncWebServerRequest* request);
   void handleGetAdvancedConfig(AsyncWebServerRequest* request);
   void handleSetAdvancedConfig(AsyncWebServerRequest* request);
+  void handleReboot(AsyncWebServerRequest* request);
   void handleGetEvaConfig(AsyncWebServerRequest* request);
   void handleSetEvaConfig(AsyncWebServerRequest* request);
+  void handleGetSelfUseConfig(AsyncWebServerRequest* request);
+  void handleSetSelfUseConfig(AsyncWebServerRequest* request);
   void handleSetExternalControl(AsyncWebServerRequest* request);
   
   // Helper functions

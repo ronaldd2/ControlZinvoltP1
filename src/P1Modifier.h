@@ -17,8 +17,16 @@ enum OperationMode {
   MODE_FORCE_DISCHARGE,   // Force discharging (show high generation)
   MODE_CHARGE_ONLY,       // Only allow charging (gradual discharge reduction)
   MODE_DISCHARGE_ONLY,    // Only allow discharging (gradual charge reduction)
-  MODE_EXTERNAL_CONTROL   // External REST API control
+  MODE_EXTERNAL_CONTROL,  // External REST API control
+  MODE_SELF_USE_LIMITER   // Limit self-use: prioritize grid export with smoothing
 };
+
+enum BatteryMode { 
+  BM_OFF,
+  BM_CHARGING,
+  BM_DISCHARGING
+} ; 
+
 
 class P1Modifier {
 public:
@@ -50,6 +58,12 @@ public:
   unsigned long getExternalControlLastUpdate() const { return externalControlLastUpdate; }
   bool isExternalControlValid() const { return (millis() - externalControlLastUpdate) < 60000; }
   
+  // Self-use limiter settings
+  void setSelfUseLimitThreshold(float watts) { selfUseLimitThreshold = watts; }
+  float getSelfUseLimitThreshold() const { return selfUseLimitThreshold; }
+  void setSelfUseLimitSmoothing(float factor) { selfUseSmoothingFactor = constrain(factor, 0.1f, 1.0f); }
+  float getSelfUseLimitSmoothing() const { return selfUseSmoothingFactor; }
+  
 private:
   OperationMode currentMode;
   int batteryPhase;      // Phase where battery is connected (1, 2, or 3)
@@ -57,7 +71,27 @@ private:
   float forcePower;      // Power value for force modes (Watts)
   float externalControlPower;  // Power value from external REST API (Watts)
   unsigned long externalControlLastUpdate;  // Timestamp of last external control update
-  uint8_t _noise;        // Noise value for power variation
+  int8_t _noise;        // Noise value for power variation
+  float _force_integrator;
+  float _powerAdjustment;
+
+  
+  // Self-use limiter smoothing
+  float selfUseLimitThreshold;     // Extra power to deliver to grid (default 20W)
+  float selfUseSmoothingFactor;    // Smoothing factor 0.1-1.0 (lower = more smoothing)
+  float lastSmoothedPower;         // Last smoothed power value for hysteresis
+  unsigned long lastSmoothUpdateTime; // Timestamp of last smoothing update
+  
+  // Lag-aware charge/discharge mode tracking
+  float previousBatteryPower;      // Previous battery power reading to detect trends
+  unsigned long lastBatteryUpdate; // When battery power was last updated
+  float currentDirection;          // Battery power direction trend: negative=charging, positive=discharging
+  unsigned long lastDirectionChange; // When direction last changed to detect reversals
+  BatteryMode batteryMode;        // Current battery mode based on trend
+  
+  // Telegram interval tracking
+  unsigned long lastModifyTime;   // Timestamp of last modify() call
+  float telegramIntervalSec;      // Detected telegram interval in seconds
   
   // Helper functions
   String modifyObisValue(const String& telegram, const String& obisCode, float newValue);
@@ -65,6 +99,9 @@ private:
   String replaceObisValue(const String& telegram, const String& obisCode, const String& newValue);
   String formatPowerValue(float watts);
   String recalculateCRC(const String& telegram);
+  float getPowerDirection(float batteryPower);  // Returns trend: negative/positive/zero
+  // Generic integrator updater with optional symmetric step and guards
+  float updateIntegrator(float currentValue, float step, bool applyPos, bool applyNeg);
 };
 
 #endif // P1MODIFIER_H

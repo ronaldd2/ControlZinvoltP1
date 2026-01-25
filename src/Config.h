@@ -19,6 +19,10 @@ public:
   int modifyPhase;
   float forcePower;
   
+  // Self-use limiter settings
+  float selfUseLimitThreshold;   // Extra W to deliver to grid in SELF_USE_LIMITER mode (default 20W)
+  float selfUseSmoothingFactor;  // Smoothing factor 0.1-1.0 (lower = more smoothing)
+  
   // Battery status (from external API - future)
   float batterySOC;
   float batteryPower;

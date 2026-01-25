@@ -177,6 +177,7 @@ String getSettingsPage() {
                     <option value="4">Charge Only</option>
                     <option value="5">Discharge Only</option>
                     <option value="6">External Control</option>
+                    <option value="7">Self-Use Limiter</option>
                 </select>
                 <button onclick="setMode()">Set Mode</button>
             </div>
@@ -206,6 +207,34 @@ String getSettingsPage() {
                     <button class="phase-btn" id="modPhase3" onclick="setModifyPhase(3)">L3</button>
                 </div>
             </div>
+        </div>
+
+        <div class="card">
+            <h2>🌱 Self-Use Limiter Mode</h2>
+            <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">Limit self-consumption by delivering extra power to the grid when battery/solar is active. Uses exponential smoothing to prevent oscillations from P1 meter updates and battery cloud lag.</p>
+
+            <div class="control-group">
+                <label>Export Threshold (Watts) <span style="color: #667eea; font-size: 0.85em;">Default: 20W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Extra power to show as grid delivery when battery is active</small>
+                <input type="number" id="selfUseThreshold" min="0" max="1000" step="1" value="20">
+            </div>
+
+            <div class="control-group">
+                <label>Smoothing Factor <span style="color: #667eea; font-size: 0.85em;">Default: 0.3</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">0.1 (max smoothing) to 1.0 (no smoothing). Lower = slower response, prevents oscillation.</small>
+                <input type="range" id="selfUseSmoothingSlider" min="0.1" max="1.0" step="0.05" value="0.3" oninput="updateSmoothingDisplay(this.value)">
+                <div style="margin-top: 8px; display: flex; justify-content: space-between;">
+                    <span id="smoothingDisplay" style="font-weight: bold; color: #667eea;">0.30</span>
+                    <span style="font-size: 0.85em; color: #999;">← More Smoothing | Less Smoothing →</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <button onclick="saveSelfUseConfig()">Save Self-Use Limiter Settings</button>
+                <button style="background: #f0f0f0; color: #444;" onclick="resetSelfUseDefaults()">Reset to Defaults</button>
+            </div>
+
+            <div id="selfUseConfigStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
         </div>
 
         <div class="card">
@@ -341,6 +370,18 @@ String getSettingsPage() {
             }
         }
 
+        async function loadSelfUseConfig() {
+            try {
+                const response = await fetch('/api/selfuse');
+                const data = await response.json();
+                document.getElementById('selfUseThreshold').value = data.threshold || 20;
+                document.getElementById('selfUseSmoothingSlider').value = data.smoothingFactor || 0.3;
+                updateSmoothingDisplay(data.smoothingFactor || 0.3);
+            } catch (error) {
+                console.error('Error fetching self-use config:', error);
+            }
+        }
+
         function updatePhaseButtons() {
             for (let i = 1; i <= 3; i++) {
                 const battBtn = document.getElementById('battPhase' + i);
@@ -409,6 +450,62 @@ String getSettingsPage() {
                 }
             } catch (error) {
                 alert('Error setting modify phase: ' + error);
+            }
+        }
+
+        function updateSmoothingDisplay(value) {
+            document.getElementById('smoothingDisplay').textContent = parseFloat(value).toFixed(2);
+        }
+
+        async function saveSelfUseConfig() {
+            const threshold = document.getElementById('selfUseThreshold').value;
+            const smoothingFactor = document.getElementById('selfUseSmoothingSlider').value;
+
+            const formData = new FormData();
+            formData.append('threshold', threshold);
+            formData.append('smoothingFactor', smoothingFactor);
+
+            try {
+                const response = await fetch('/api/selfuse', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showSelfUseConfigStatus(data.message || 'Settings saved successfully!', true);
+                    loadConfig();
+                } else {
+                    showSelfUseConfigStatus('Error: ' + (data.error || 'Unknown error'), false);
+                }
+            } catch (error) {
+                showSelfUseConfigStatus('Error saving self-use config: ' + error, false);
+            }
+        }
+
+        function showSelfUseConfigStatus(message, success) {
+            const statusDiv = document.getElementById('selfUseConfigStatus');
+            statusDiv.textContent = message;
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = success ? '#d4edda' : '#f8d7da';
+            statusDiv.style.color = success ? '#155724' : '#721c24';
+        }
+
+        async function rebootDevice() {
+            const confirmed = confirm('Reboot device now? Settings are already saved and will not be reset.');
+            if (!confirmed) return;
+
+            try {
+                const response = await fetch('/api/reboot');
+                const data = await response.json();
+                if (data.success) {
+                    showAdvancedStatus('Rebooting device...', true);
+                    setTimeout(() => location.reload(), 4000);
+                } else {
+                    showAdvancedStatus('Error: ' + (data.error || 'Unknown error'), false);
+                }
+            } catch (error) {
+                showAdvancedStatus('Error sending reboot command: ' + error, false);
             }
         }
 
@@ -559,6 +656,7 @@ String getSettingsPage() {
         loadConfig();
         loadMqttConfig();
         loadAdvancedConfig();
+        loadSelfUseConfig();
         loadEvaConfig();
     </script>
 </body>

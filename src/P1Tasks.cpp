@@ -161,7 +161,7 @@ void readP1Task(void* parameter) {
             logPrintln(" bytes");
             
             logPrintln("[READ] P1 telegram received and processed");
-            delay(50);
+
             digitalWrite(LED_PIN, LOW);
             
             buffer = "";
