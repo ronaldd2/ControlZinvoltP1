@@ -189,6 +189,8 @@ void setup() {
   p1Modifier.setBatteryPhase(config.batteryPhase);
   p1Modifier.setModifyPhase(config.modifyPhase);
   p1Modifier.setForcePower(config.forcePower);
+  p1Modifier.setSelfUseLimitThreshold(config.selfUseLimitThreshold);
+  p1Modifier.setSelfUseLimitSmoothing(config.selfUseSmoothingFactor);
 
   
   // Create tasks for P1 reading and relaying

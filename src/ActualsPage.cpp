@@ -230,12 +230,12 @@ String getActualsPage() {
                     <div class="metric-value" id="batterySOC">-<span class="metric-unit">%</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Battery Power</div>
-                    <div class="metric-value" id="batteryPower">-<span class="metric-unit">W</span></div>
-                </div>
-                <div class="metric">
                     <div class="metric-label">Grid Power</div>
                     <div class="metric-value" id="gridPower">-<span class="metric-unit">W</span></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Battery Power</div>
+                    <div class="metric-value" style="font-size: 1.0em;" id="batteryPower">-<span class="metric-unit">W</span></div>
                 </div>
             </div>
             <div id="evaDisabled" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; color: #666; font-size: 0.9em;">
@@ -269,8 +269,18 @@ String getActualsPage() {
                     </div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">P1 Link</div>
-                    <div class="metric-value" id="p1Validity">Checking...</div>
+                    <div class="metric-label">P1 Connection</div>
+                    <div class="metric-value">
+                        <span id="p1ConnectionStatus" class="status-badge status-inactive">Checking...</span>
+                    </div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">DSMR Version</div>
+                    <div class="metric-value" style="font-size: 1.2em;" id="dsmrVersion">-</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">P1 Interval</div>
+                    <div class="metric-value" id="p1Interval">-<span class="metric-unit">s</span></div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Free Heap</div>
@@ -289,6 +299,28 @@ String getActualsPage() {
     </div>
 
     <script>
+        function formatUptime(seconds) {
+            if (!seconds || seconds < 0) return '0s';
+            
+            const years = Math.floor(seconds / 31536000);
+            seconds %= 31536000;
+            const days = Math.floor(seconds / 86400);
+            seconds %= 86400;
+            const hours = Math.floor(seconds / 3600);
+            seconds %= 3600;
+            const minutes = Math.floor(seconds / 60);
+            seconds = Math.floor(seconds % 60);
+            
+            const parts = [];
+            if (years > 0) parts.push(years + 'y');
+            if (days > 0) parts.push(days + 'd');
+            if (hours > 0) parts.push(hours + 'h');
+            if (minutes > 0) parts.push(minutes + 'm');
+            if (seconds > 0 || parts.length === 0) parts.push(seconds + 's');
+            
+            return parts.join(' ');
+        }
+        
         async function fetchData() {
             try {
                 const p1Response = await fetch('/api/p1data');
@@ -338,9 +370,10 @@ String getActualsPage() {
 
                 const modifier = statusData.modifier || {};
                 const wifi = statusData.wifi || {};
+                const p1 = statusData.p1 || {};
                 document.getElementById('currentMode').textContent = modifier.modeString || '—';
                 
-                document.getElementById('uptime').innerHTML = (statusData.uptime || 0) + '<span class="metric-unit">s</span>';
+                document.getElementById('uptime').textContent = formatUptime(statusData.uptime || 0);
                 document.getElementById('wifiSSID').textContent = wifi.ssid || '-';
                 document.getElementById('ipAddress').textContent = wifi.ip || '-';
                 document.getElementById('wifiRSSI').innerHTML = (wifi.rssi || 0) + '<span class="metric-unit">dBm</span>';
@@ -357,15 +390,35 @@ String getActualsPage() {
                     mqttStatusEl.className = 'status-badge status-inactive';
                 }
 
-                document.getElementById('p1Validity').textContent = (statusData.p1 && statusData.p1.valid) ? 'Valid' : 'Invalid';
+                const p1StatusEl = document.getElementById('p1ConnectionStatus');
+                if (p1.connected) {
+                    p1StatusEl.textContent = '✓ Connected';
+                    p1StatusEl.className = 'status-badge status-active';
+                } else {
+                    p1StatusEl.textContent = '✗ Disconnected';
+                    p1StatusEl.className = 'status-badge status-inactive';
+                }
+                
+                document.getElementById('dsmrVersion').textContent = p1.dsmrVersion || '-';
+                document.getElementById('p1Interval').innerHTML = (p1.interval ? p1.interval.toFixed(1) : '-') + '<span class="metric-unit">s</span>';
 
                 // Update battery data
                 if (statusData.battery) {
                     document.getElementById('batterySOC').innerHTML = (statusData.battery.soc || 0) + '<span class="metric-unit">%</span>';
                     const batteryPower = statusData.battery.power || 0;
+                    const gridPower = statusData.battery.gridPower || 0;
                     const powerSign = batteryPower > 10 ? '⚡ Discharging' : batteryPower < -10 ? '🔋 Charging' : '🔌 Standby' ;
-                    document.getElementById('batteryPower').innerHTML = Math.abs(batteryPower) + '<span class="metric-unit">W</span> ' + powerSign;
-                    document.getElementById('gridPower').innerHTML = (statusData.battery.gridPower || 0) + '<span class="metric-unit">W</span>';
+
+
+                    let efficiencyText = '';
+                    const absBatt = Math.abs(batteryPower);
+                    const absGrid = Math.abs(gridPower);
+                    if (absBatt > 1 && absGrid > 1) {
+                        const eff = Math.min(999.0, (absGrid / absBatt) * 100.0);
+                        efficiencyText = ' (' + eff.toFixed(0) + '%)';
+                    }
+                    document.getElementById('gridPower').innerHTML = gridPower + '<span class="metric-unit">W</span>'+ powerSign;
+                    document.getElementById('batteryPower').innerHTML = Math.abs(batteryPower) + '<span class="metric-unit">W</span> '  + efficiencyText;
                 } else {
                     document.getElementById('batterySOC').innerHTML = '-<span class="metric-unit">%</span>';
                     document.getElementById('batteryPower').innerHTML = '-<span class="metric-unit">W</span>';

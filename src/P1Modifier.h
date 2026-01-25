@@ -57,8 +57,9 @@ public:
   float getExternalControlPower() const { return externalControlPower; }
   unsigned long getExternalControlLastUpdate() const { return externalControlLastUpdate; }
   bool isExternalControlValid() const { return (millis() - externalControlLastUpdate) < 60000; }
-  
-  // Self-use limiter settings
+    // Get detected telegram interval in seconds
+  float getTelegramInterval() const { return telegramIntervalSec; }
+    // Self-use limiter settings
   void setSelfUseLimitThreshold(float watts) { selfUseLimitThreshold = watts; }
   float getSelfUseLimitThreshold() const { return selfUseLimitThreshold; }
   void setSelfUseLimitSmoothing(float factor) { selfUseSmoothingFactor = constrain(factor, 0.1f, 1.0f); }

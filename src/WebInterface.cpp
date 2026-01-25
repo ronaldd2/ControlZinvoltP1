@@ -586,7 +586,10 @@ String WebInterface::getStatusJSON() {
   
   // P1 parser status
   doc["p1"]["valid"] = _parser->isValid();
+  doc["p1"]["connected"] = _parser->isValid(); // Alias for connection status
   doc["p1"]["totalPower"] = _parser->getTotalActivePower();
+  doc["p1"]["dsmrVersion"] = _parser->getDsmrVersion();
+  doc["p1"]["interval"] = _modifier->getTelegramInterval();
   
   // Modifier status
   doc["modifier"]["mode"] = _modifier->getMode();

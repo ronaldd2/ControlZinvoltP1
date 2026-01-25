@@ -240,10 +240,16 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       break;
       
     case MODE_SELF_USE_LIMITER: {
+
       float offset = selfUseLimitThreshold;
+      
       if (batteryMode == BM_CHARGING) {
         offset += abs(localBatteryPower)*0.1; // Increase offset when charging
       } 
+      logPrint("[LIMITER] offset=");
+      logPrint(String(offset,1));
+      logPrint("W, selfUseLimitThreshold=");
+      logPrint(String(selfUseLimitThreshold,1));
       float factor = 1.0;
       float lowThreshold = 100.0;
       float maxFactor = 3.0;
@@ -253,31 +259,35 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
           float t = (abs(newPowerWatt[0]) - lowThreshold);
           // Exponentiële stijging richting maxFactor
           factor = 1.0 + (maxFactor - 1.0) * (1.0 - std::exp(-k * t));
-          _powerAdjustment = offset;
+          _powerAdjustment = -offset;
+
       }
-      newPowerWatt[0] = (activePowerWatt[0] /factor);
+      logPrint(" factor=");
+      logPrint(String(factor, 3));
+      newPowerWatt[0] = (activePowerWatt[0] /factor) - _powerAdjustment;
 
       if ((activePowerWatt[0] > (-offset - 5)) && (activePowerWatt[0] <(-offset+ 25))) {
         // we are fine, set the output to zero
+        logPrint(" within deadband, no adjustment ");
         newPowerWatt[0]=0;
       } else {
-        _powerAdjustment = updateIntegrator(
-          _powerAdjustment,
-          1,  // step
-          activePowerWatt[0] < (-offset - 5),      // Increase adjustment when exporting
-          activePowerWatt[0] > (-offset + 25)      // Decrease adjustment when importing
-        );
-        constrain(_powerAdjustment, -offset, offset);
-        newPowerWatt[0]  =- _powerAdjustment;
+        if (abs(activePowerWatt[0]) <= (1.5*offset)) {
+          // small error, small step
+          _powerAdjustment = updateIntegrator(
+            _powerAdjustment,
+            1,  // step
+            activePowerWatt[0] < (-offset - 5),      // Increase adjustment when exporting
+            activePowerWatt[0] > (-offset + 25)      // Decrease adjustment when importing
+          );
+          constrain(_powerAdjustment, -offset, offset);
+          newPowerWatt[0]  =- _powerAdjustment;
+          logPrint(" powerAdj=");
+          logPrint(String(_powerAdjustment,1));
+        }     
       }
-     
-      
-      logPrint("[LIMITER] grid=");
-      logPrint(String(localBatteryPower, 1));
-      logPrint("W batt=");
-      logPrint(String(batteryPower, 1));
-      logPrint("W adj=");
-      logPrintln(String(_powerAdjustment, 1));
+      logPrint(" NewPower=");
+      logPrint(String(newPowerWatt[0],1));
+      logPrintln("W");
       break;
     }
       

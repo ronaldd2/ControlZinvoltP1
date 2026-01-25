@@ -5,6 +5,7 @@
 #include "P1Parser.h"
 
 // OBIS codes for DSMR P1 telegrams
+#define OBIS_DSMR_VERSION "1-3:0.2.8"
 #define OBIS_TIMESTAMP "0-0:1.0.0"
 #define OBIS_ENERGY_IMPORT_TARIFF1 "1-0:1.8.1"
 #define OBIS_ENERGY_IMPORT_TARIFF2 "1-0:1.8.2"
@@ -46,6 +47,7 @@ P1Parser::P1Parser() {
 bool P1Parser::parse(const String& telegram) {
   _rawTelegram = telegram;
   _valid = false;
+  _dsmrVersion = "";
   
   // Check if telegram starts with '/' and ends with '!'
   if (!telegram.startsWith("/") || (telegram.charAt(telegram.length()-5) != '!')) {
@@ -55,6 +57,14 @@ bool P1Parser::parse(const String& telegram) {
   
   // Extract values using OBIS codes
   _timestamp = extractObisValue(telegram, OBIS_TIMESTAMP);
+  
+  // Extract DSMR version from OBIS code 1-3:0.2.8 (e.g., "42" -> "4.2")
+  String versionStr = extractObisValue(telegram, OBIS_DSMR_VERSION);
+  if (versionStr.length() >= 2) {
+    _dsmrVersion = String(versionStr.charAt(0)) + "." + versionStr.substring(1);
+  } else if (versionStr.length() > 0) {
+    _dsmrVersion = versionStr;
+  }
   
   // Energy totals
   String energyImport1 = extractObisValue(telegram, OBIS_ENERGY_IMPORT_TARIFF1);
@@ -192,4 +202,8 @@ bool P1Parser::validateCRC(const String& telegram) {
   
   // Compare CRCs (case-insensitive)
   return receivedCRC.equalsIgnoreCase(calculatedCRC);
+}
+
+String P1Parser::getDsmrVersion() const {
+  return _dsmrVersion.length() > 0 ? _dsmrVersion : "Unknown";
 }

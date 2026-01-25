@@ -77,6 +77,9 @@ public:
   bool isValid() const { return _valid; }
   void setValid(bool ok) { _valid = ok; }
   
+  // Get DSMR version from telegram header (e.g., "/ISK5\2ME382-1004" -> "5")
+  String getDsmrVersion() const;
+  
   // Get raw telegram
   String getRawTelegram() const { return _rawTelegram; }
   
@@ -107,6 +110,7 @@ private:
   
   String _timestamp;
   String _rawTelegram;
+  String _dsmrVersion;
   bool _valid;
   
   // Helper functions
