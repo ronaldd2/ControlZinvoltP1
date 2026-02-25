@@ -18,70 +18,70 @@ public:
   bool parse(const String& telegram);
   
   // Get parsed values
-  float getActivePowerL1() const { return _activePowerL1; }
-  float getActivePowerL2() const { return _activePowerL2; }
-  float getActivePowerL3() const { return _activePowerL3; }
+  float getActivePowerL1() const { return active_power_l1_; }
+  float getActivePowerL2() const { return active_power_l2_; }
+  float getActivePowerL3() const { return active_power_l3_; }
   float getActivePower(uint8_t phase) const {
     switch (phase) {
       case 0: return getTotalActivePower();
-      case 1: return _activePowerL1;
-      case 2: return _activePowerL2;
-      case 3: return _activePowerL3;
+      case 1: return active_power_l1_;
+      case 2: return active_power_l2_;
+      case 3: return active_power_l3_;
       default: return 0;
     }
   }
-  float getTotalActivePower() const { return _activePowerL1 + _activePowerL2 + _activePowerL3; }
+  float getTotalActivePower() const { return active_power_l1_ + active_power_l2_ + active_power_l3_; }
   
-  float getActivePowerDeliveredL1() const { return _activePowerDeliveredL1; }
-  float getActivePowerDeliveredL2() const { return _activePowerDeliveredL2; }
-  float getActivePowerDeliveredL3() const { return _activePowerDeliveredL3; }
+  float getActivePowerDeliveredL1() const { return active_power_delivered_l1_; }
+  float getActivePowerDeliveredL2() const { return active_power_delivered_l2_; }
+  float getActivePowerDeliveredL3() const { return active_power_delivered_l3_; }
   float getActivePowerDelivered(uint8_t phase) const {
     switch (phase) {
-      case 0: return (_activePowerDeliveredL1 + _activePowerDeliveredL2 + _activePowerDeliveredL3);
-      case 1: return _activePowerDeliveredL1;
-      case 2: return _activePowerDeliveredL2;
-      case 3: return _activePowerDeliveredL3;
+      case 0: return (active_power_delivered_l1_ + active_power_delivered_l2_ + active_power_delivered_l3_);
+      case 1: return active_power_delivered_l1_;
+      case 2: return active_power_delivered_l2_;
+      case 3: return active_power_delivered_l3_;
       default: return 0;
     }
   }
   
-  float getTotalEnergyImport() const { return _totalEnergyImport; }
-  float getTotalEnergyExport() const { return _totalEnergyExport; }
+  float getTotalEnergyImport() const { return total_energy_import_; }
+  float getTotalEnergyExport() const { return total_energy_export_; }
   
-  float getCurrentL1() const { return _currentL1; }
-  float getCurrentL2() const { return _currentL2; }
-  float getCurrentL3() const { return _currentL3; }
+  float getCurrentL1() const { return current_l1_; }
+  float getCurrentL2() const { return current_l2_; }
+  float getCurrentL3() const { return current_l3_; }
   float getCurrent(uint8_t phase) const {
     switch (phase) {
-      case 0: return (_currentL1 + _currentL2 + _currentL3);
-      case 1: return _currentL1;
-      case 2: return _currentL2;
-      case 3: return _currentL3;
+      case 0: return (current_l1_ + current_l2_ + current_l3_);
+      case 1: return current_l1_;
+      case 2: return current_l2_;
+      case 3: return current_l3_;
       default: return 0;
     }
   }
   
-  float getVoltageL1() const { return _voltageL1; }
-  float getVoltageL2() const { return _voltageL2; }
-  float getVoltageL3() const { return _voltageL3; }
+  float getVoltageL1() const { return voltage_l1_; }
+  float getVoltageL2() const { return voltage_l2_; }
+  float getVoltageL3() const { return voltage_l3_; }
   float getVoltage(uint8_t phase) const {
     switch (phase) {
-      case 1: return _voltageL1;
-      case 2: return _voltageL2;
-      case 3: return _voltageL3;
+      case 1: return voltage_l1_;
+      case 2: return voltage_l2_;
+      case 3: return voltage_l3_;
       default: return 0;
     }
   }
   
-  String getTimestamp() const { return _timestamp; }
-  bool isValid() const { return _valid; }
-  void setValid(bool ok) { _valid = ok; }
+  String getTimestamp() const { return timestamp_; }
+  bool isValid() const { return valid_; }
+  void setValid(bool ok) { valid_ = ok; }
   
   // Get DSMR version from telegram header (e.g., "/ISK5\2ME382-1004" -> "5")
   String getDsmrVersion() const;
   
   // Get raw telegram
-  String getRawTelegram() const { return _rawTelegram; }
+  String getRawTelegram() const { return raw_telegram_; }
   
   // CRC validation and calculation
   static String calculateCRC16(const String& data);
@@ -89,29 +89,29 @@ public:
   
 private:
   // Parsed data fields
-  float _activePowerL1;
-  float _activePowerL2;
-  float _activePowerL3;
+  float active_power_l1_;
+  float active_power_l2_;
+  float active_power_l3_;
   
-  float _activePowerDeliveredL1;
-  float _activePowerDeliveredL2;
-  float _activePowerDeliveredL3;
+  float active_power_delivered_l1_;
+  float active_power_delivered_l2_;
+  float active_power_delivered_l3_;
   
-  float _totalEnergyImport;
-  float _totalEnergyExport;
+  float total_energy_import_;
+  float total_energy_export_;
   
-  float _currentL1;
-  float _currentL2;
-  float _currentL3;
+  float current_l1_;
+  float current_l2_;
+  float current_l3_;
   
-  float _voltageL1;
-  float _voltageL2;
-  float _voltageL3;
+  float voltage_l1_;
+  float voltage_l2_;
+  float voltage_l3_;
   
-  String _timestamp;
-  String _rawTelegram;
-  String _dsmrVersion;
-  bool _valid;
+  String timestamp_;
+  String raw_telegram_;
+  String dsmr_version_;
+  bool valid_;
   
   // Helper functions
   float extractValue(const String& line);

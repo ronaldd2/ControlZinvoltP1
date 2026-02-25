@@ -53,3 +53,6 @@ __pycache__/
 credentials.h
 secrets.h
 passwords.txt
+
+*.lua
+

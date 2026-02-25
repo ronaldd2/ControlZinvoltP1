@@ -17,49 +17,53 @@
 
 
 P1Modifier::P1Modifier() {
-  currentMode = MODE_UNMODIFIED;
-  batteryPhase = 1;
-  modifyPhase = 1;
-  forcePower = 2000.0;  // Default 2kW
-  externalControlPower = 0.0;
-  externalControlLastUpdate = 0;
-  selfUseLimitThreshold = 20.0;   // Default 20W
-  selfUseSmoothingFactor = 0.3;   // Default moderate smoothing
-  lastSmoothedPower = 0.0;
-  lastSmoothUpdateTime = 0;
-  _noise = -1;               // Start deterministic noise cycle (-1,0,+1)
-  _force_integrator = 0.0f;  // Ensure stable start for force modes
+  current_mode_ = MODE_UNMODIFIED;
+  battery_phase_ = 1;
+  modify_phase_ = 1;
+  force_power_ = 2000.0;  // Default 2kW
+  power_setpoint_ = 0.0;  // Default 0W (neutral)
+  external_control_power_ = 0.0;
+  external_control_last_update_ = 0;
+  self_use_limit_threshold_ = 20.0;   // Default 20W
+  self_use_smoothing_factor_ = 0.3;   // Default moderate smoothing
+  last_smoothed_power_ = 0.0;
+  last_smooth_update_time_ = 0;
+  config_ = nullptr;
+  noise_ = -1;               // Start deterministic noise cycle (-1,0,+1)
+  force_integrator_ = 0.0f;  // Ensure stable start for force modes
+  last_power_watt_ = 1;
   
   // Lag-aware initialization
-  previousBatteryPower = 0.0;
-  lastBatteryUpdate = 0;
-  currentDirection = 0.0;  // 0 = neutral, negative = charging, positive = discharging
+  previous_battery_power_ = 0.0;
+  last_battery_update_ = 0;
+  current_direction_ = 0.0;  // 0 = neutral, negative = charging, positive = discharging
 
-  batteryMode = BM_OFF;
-  lastDirectionChange = 0;
+  battery_mode_ = BM_OFF;
+  last_direction_change_ = 0;
   
   // Telegram interval tracking
-  lastModifyTime = 0;
-  telegramIntervalSec = 10.0;  // Default to 10 seconds
+  last_modify_time_ = 0;
+  telegram_interval_sec_ = 10.0;  // Default to 10 seconds
 }
 
 String P1Modifier::getModeString() const {
-  switch (currentMode) {
+  switch (current_mode_) {
     case MODE_UNMODIFIED: return "Unmodified";
-    case MODE_OFF: return "Off";
+    case MODE_BATTERY_OFF: return "Battery Off";
     case MODE_FORCE_CHARGE: return "Force Charge";
     case MODE_FORCE_DISCHARGE: return "Force Discharge";
+    case MODE_POWER_CONTROL: return "Power Control [" + String(power_setpoint_,0) + "W]";
     case MODE_CHARGE_ONLY: return "Charge Only";
     case MODE_DISCHARGE_ONLY: return "Discharge Only";
     case MODE_EXTERNAL_CONTROL: return "External Control";
-    case MODE_SELF_USE_LIMITER: return "Self-Use Limiter";
+    case MODE_OPTIMIZE: return "Optimize [" + String(optimize_setpoint_,1) + "W]";
     default: return "Unknown";
   }
 }
 
 String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser, float batteryPower) {
   // If unmodified mode, return original
-  if (currentMode == MODE_UNMODIFIED) {
+  if (current_mode_ == MODE_UNMODIFIED) {
     return originalTelegram;
   }
   
@@ -79,47 +83,47 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
   unsigned long now = millis();
   
   // Detect telegram interval for adaptive integrator step sizing
-  if (lastModifyTime > 0) {
-    float intervalMs = now - lastModifyTime;
+  if (last_modify_time_ > 0) {
+    float intervalMs = now - last_modify_time_;
     float detectedIntervalSec = intervalMs / 1000.0;
     
     // Use exponential moving average for smooth interval detection
-    telegramIntervalSec = (telegramIntervalSec * 0.9) + (detectedIntervalSec * 0.1);
+    telegram_interval_sec_ = (telegram_interval_sec_ * 0.9) + (detectedIntervalSec * 0.1);
   }
-  lastModifyTime = now;
+  last_modify_time_ = now;
   
-  if (lastBatteryUpdate == 0) {
-    lastBatteryUpdate = now;
-    previousBatteryPower = localBatteryPower;
+  if (last_battery_update_ == 0) {
+    last_battery_update_ = now;
+    previous_battery_power_ = localBatteryPower;
   }
   
-  float powerDelta = localBatteryPower - previousBatteryPower;
+  float powerDelta = localBatteryPower - previous_battery_power_;
   float direction = getPowerDirection(localBatteryPower);
   
   // Detect direction changes (with lag awareness - only confirm after 30 seconds)
-  if ((direction != 0.0) && ((direction * currentDirection) <= 0.0)) {
+  if ((direction != 0.0) && ((direction * current_direction_) <= 0.0)) {
     // Direction might be changing
-    if (now - lastDirectionChange > 30000) {
+    if (now - last_direction_change_ > 30000) {
       // Confirmed direction change after 30s lag buffer
-      currentDirection = direction;
-      lastDirectionChange = now;
+      current_direction_ = direction;
+      last_direction_change_ = now;
     }
   }
   if (batteryPower == 0.0) {
-    batteryMode = BM_OFF;
+    battery_mode_ = BM_OFF;
   }
   if (batteryPower < -10.0) {
-    batteryMode = BM_CHARGING;
+    battery_mode_ = BM_CHARGING;
   } 
   if (batteryPower > 10.0) {
-    batteryMode = BM_DISCHARGING;
+    battery_mode_ = BM_DISCHARGING;
   }
 
-  previousBatteryPower = localBatteryPower;
-  lastBatteryUpdate = now;
+  previous_battery_power_ = localBatteryPower;
+  last_battery_update_ = now;
   
-  switch (currentMode) {
-    case MODE_OFF:
+  switch (current_mode_) {
+    case MODE_BATTERY_OFF:
       // Prevent charging/discharging: reduce power to near zero
       newPowerWatt[0] = -localBatteryPower*0.3;  // Minimal power to avoid division by zero
       break;
@@ -128,40 +132,65 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       // Only allow charging (prevent discharging)
       // Use trend to avoid over-correcting due to lag
       // If trend shows discharging (positive), apply counter-power
-      if (batteryMode == BM_DISCHARGING) {
-        // Battery is discharging - gradually reduce export to force charging
+      if (battery_mode_ == BM_DISCHARGING) {
+        // Battery is discharging - gradually reduce export to stop discharging
         // Use smaller adjustments to account for 15-20s lag
         float adjustment = abs(localBatteryPower)*0.5;
         newPowerWatt[0] = -adjustment;
-      } else if (batteryMode == BM_OFF) {
-        // If battery is charging or neutral, allow normal charging
-        newPowerWatt[0]  = 0.0f; // Prevent discharging
+      } else { 
+        if (activePowerWatt[0] > 0) {
+          // there is power consumption, prevent mode change to discharging
+          if (battery_mode_ == BM_OFF) {
+          // If battery is charging or neutral, allow normal charging
+            newPowerWatt[0]  = 0.0f; // Prevent mode change to discharging
+          } else {
+            // Battery is charging - allow normal charging
+            newPowerWatt[0] = activePowerWatt[0]/3.0;
+          }
+        }  else {
+          // we deliver power to the grid
+        }
       }
       break;
       
     case MODE_DISCHARGE_ONLY:
       // Only allow discharging (prevent charging)
       // If trend shows charging (negative), apply counter-power
-      if (batteryMode == BM_CHARGING) {
+      if (battery_mode_ == BM_CHARGING) {
         // Battery is charging - gradually reduce import to force discharging
         float adjustment = abs(localBatteryPower)*0.5;
         newPowerWatt[0] = adjustment;
-      } else if (batteryMode == BM_OFF) {
-        // If battery is discharging or neutral, allow normal discharging
-        newPowerWatt[0] = 0.0f; // Prevent charging
-      }
+      } else {
+        if (activePowerWatt[0] < 0) {
+          // there is power being delivered to the grid, prevent mode change to charging
+          if (battery_mode_ == BM_OFF) {
+            // If battery is discharging or neutral, allow normal discharging
+            newPowerWatt[0] = 0.0f; // Prevent charging
+          } else {
+            // Battery is discharging - allow normal discharging
+            newPowerWatt[0] = activePowerWatt[0]/3.0;
+          }
+        }  else {
+          // we consume power from the grid
+        }
+      } 
       break;
       
     case MODE_EXTERNAL_CONTROL:
       // External control via REST API
+      logPrint("[EXTERNAL_CONTROL] ");
+    
       if (isExternalControlValid()) {
-        newPowerWatt[0] = externalControlPower;
+        logPrintln(String(external_control_power_,0) + " W");
+        newPowerWatt[0] = external_control_power_;
+      } else {
+        logPrintln(" - external control data stale, no adjustment applied");
       }
       break;
       
     case MODE_FORCE_CHARGE:
       // Force battery to charge by showing high grid consumption
-      // Target: localBatteryPower should be -forcePower (e.g., -1000W = charging at 1000W)
+      // Target: localBatteryPower should be -force_power_ (e.g., -1000W = charging at 1000W)
       // Control logic:
       //   - If batteryPower = -900W (less charging than -1000W target), error = -900 - (-1000) = +100W
       //   - Positive error means undercharging -> need to INCREASE grid consumption (positive newPowerWatt)
@@ -169,30 +198,30 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       // 
       // Integrator accumulates error over time for steady-state correction
       {
-        float chargeError = localBatteryPower - (-forcePower);  // Positive when undercharging
+        float chargeError = localBatteryPower - (-force_power_);  // Positive when undercharging
         
-        _force_integrator = updateIntegrator(_force_integrator, 5, chargeError > 50, chargeError < -50);
+        force_integrator_ = updateIntegrator(force_integrator_, 5, chargeError > 50, chargeError < -50);
 
         if ((chargeError >= -50) && (chargeError <= 50)) {
           // Within deadband, slowly decay integrator to avoid windup
-          _force_integrator = constrain(_force_integrator, -10, 10);
-          _force_integrator = updateIntegrator(_force_integrator, 1, _force_integrator < 0, _force_integrator > 0);
+          force_integrator_ = constrain(force_integrator_, -10, 10);
+          force_integrator_ = updateIntegrator(force_integrator_, 1, force_integrator_ < 0, force_integrator_ > 0);
         }
         
         // Limit integrator to prevent windup
-        _force_integrator = constrain(_force_integrator,-50, 50);
+        force_integrator_ = constrain(force_integrator_,-50, 50);
         
         // Apply proportional + integral control:
         // - Proportional term: chargeError/3 provides immediate response (damped by /3 for stability)
-        // - Integral term: _force_integrator corrects steady-state offset
-        newPowerWatt[0] = -_force_integrator - (chargeError / 3.0f);
+        // - Integral term: force_integrator_ corrects steady-state offset
+        newPowerWatt[0] = -force_integrator_ - (chargeError / 3.0f);
         
         logPrint("[FORCE_CHARGE] BatPower=");
         logPrint(String(localBatteryPower, 0));
         logPrint("W, Error=");
         logPrint(String(chargeError, 0));
         logPrint("W, Integrator=");
-        logPrint(String(_force_integrator, 0));
+        logPrint(String(force_integrator_, 0));
         logPrint(", Output=");
         logPrint(String(newPowerWatt[0], 0));
         logPrintln("W");
@@ -201,7 +230,7 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       
     case MODE_FORCE_DISCHARGE:
       // Force battery to discharge by showing high grid export (low/negative power)
-      // Target: localBatteryPower should be +forcePower (e.g., +1000W = discharging at 1000W)
+      // Target: localBatteryPower should be +force_power_ (e.g., +1000W = discharging at 1000W)
       // Control logic:
       //   - If batteryPower = +900W (less discharging than +1000W target), error = 900 - 1000 = -100W
       //   - Negative error means under-discharging -> need to DECREASE grid power (show more export)
@@ -209,96 +238,148 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       //
       // Integrator accumulates error over time for steady-state correction
       {
-        float dischargeError = localBatteryPower - forcePower;  // Negative when under-discharging
+        float dischargeError = localBatteryPower - force_power_;  // Negative when under-discharging
         
-        _force_integrator = updateIntegrator(_force_integrator, 5, dischargeError > 50, dischargeError < -50);
+        force_integrator_ = updateIntegrator(force_integrator_, 5, dischargeError > 50, dischargeError < -50);
 
         if ((dischargeError >= -50) && (dischargeError <= 50)) {
           // Within deadband, slowly decay integrator to avoid windup
-          _force_integrator = constrain(_force_integrator, -10, 10);
-          _force_integrator = updateIntegrator(_force_integrator, 1, _force_integrator < 0, _force_integrator > 0);
+          force_integrator_ = constrain(force_integrator_, -10, 10);
+          force_integrator_ = updateIntegrator(force_integrator_, 1, force_integrator_ < 0, force_integrator_ > 0);
         }
         
         // Limit integrator to prevent windup
-        _force_integrator = constrain(_force_integrator, -50, 50);
+        force_integrator_ = constrain(force_integrator_, -50, 50);
         
         // Apply proportional + integral control:
         // - Proportional term: dischargeError/3 provides immediate response (damped by /3)
-        // - Integral term: _force_integrator corrects steady-state offset
-        newPowerWatt[0] = -_force_integrator - (dischargeError / 3.0f);
+        // - Integral term: force_integrator_ corrects steady-state offset
+        newPowerWatt[0] = -force_integrator_ - (dischargeError / 3.0f);
         
         logPrint("[FORCE_DISCHARGE] BatPower=");
         logPrint(String(localBatteryPower, 0));
         logPrint("W, Error=");
         logPrint(String(dischargeError, 0));
         logPrint("W, Integrator=");
-        logPrint(String(_force_integrator, 0));
+        logPrint(String(force_integrator_, 0));
         logPrint(", Output=");
         logPrint(String(newPowerWatt[0], 0));
         logPrintln("W");
       }
       break;
       
-    case MODE_SELF_USE_LIMITER: {
-
-      float offset = selfUseLimitThreshold;
-      
-      if (batteryMode == BM_CHARGING) {
-        offset += abs(localBatteryPower)*0.1; // Increase offset when charging
-      } 
-      logPrint("[LIMITER] offset=");
-      logPrint(String(offset,1));
-      logPrint("W, selfUseLimitThreshold=");
-      logPrint(String(selfUseLimitThreshold,1));
-      float factor = 1.0;
-      float lowThreshold = 100.0;
-      float maxFactor = 3.0;
-      float k = 0.01; // Adjust steepness of the curve
-    
-      if (abs(newPowerWatt[0]) > lowThreshold) {
-          float t = (abs(newPowerWatt[0]) - lowThreshold);
-          // Exponentiële stijging richting maxFactor
-          factor = 1.0 + (maxFactor - 1.0) * (1.0 - std::exp(-k * t));
-          _powerAdjustment = -offset;
-
-      }
-      logPrint(" factor=");
-      logPrint(String(factor, 3));
-      newPowerWatt[0] = (activePowerWatt[0] /factor) - _powerAdjustment;
-
-      if ((activePowerWatt[0] > (-offset - 5)) && (activePowerWatt[0] <(-offset+ 25))) {
-        // we are fine, set the output to zero
-        logPrint(" within deadband, no adjustment ");
-        newPowerWatt[0]=0;
-      } else {
-        if (abs(activePowerWatt[0]) <= (1.5*offset)) {
-          // small error, small step
-          _powerAdjustment = updateIntegrator(
-            _powerAdjustment,
+    case MODE_POWER_CONTROL:
+      // Control battery to specific power setpoint (positive = discharge, negative = charge)
+      // Target: localBatteryPower should match power_setpoint_
+      // Control logic: same as force modes but uses power_setpoint_ as target
+      {
+        float offset = -self_use_limit_threshold_;    
+        if (abs(activePowerWatt[0]) > 100.0) {
+          power_setpoint_ = activePowerWatt[0] + offset;
+        }
+        power_setpoint_ = updateIntegrator(
+            power_setpoint_,
             1,  // step
-            activePowerWatt[0] < (-offset - 5),      // Increase adjustment when exporting
-            activePowerWatt[0] > (-offset + 25)      // Decrease adjustment when importing
-          );
-          constrain(_powerAdjustment, -offset, offset);
-          newPowerWatt[0]  =- _powerAdjustment;
-          logPrint(" powerAdj=");
-          logPrint(String(_powerAdjustment,1));
-        }     
+            activePowerWatt[0] < (offset - 5),      // Increase adjustment when exporting
+            activePowerWatt[0] > (offset + 25)      // Decrease adjustment when importing
+        ); 
+
+        float powerError = -localBatteryPower - power_setpoint_;
+        
+        force_integrator_ = updateIntegrator(force_integrator_, 5, powerError > 50, powerError < -50);
+
+        if ((powerError >= -50) && (powerError <= 50)) {
+          // Within deadband, slowly decay integrator to avoid windup
+          force_integrator_ = constrain(force_integrator_, -10, 10);
+          force_integrator_ = updateIntegrator(force_integrator_, 1, force_integrator_ < 0, force_integrator_ > 0);
+        }
+        
+        // Limit integrator to prevent windup
+        force_integrator_ = constrain(force_integrator_,-50, 50);
+        
+        // Apply proportional + integral control:
+        // - Proportional term: powerError/3 provides immediate response
+        // - Integral term: force_integrator_ corrects steady-state offset
+        newPowerWatt[0] = -force_integrator_ - (powerError / 3.0f);
+        
+        logPrint("[POWER_CONTROL] BatPower=");
+        logPrint(String(localBatteryPower, 0));
+        logPrint("W, Setpoint=");
+        logPrint(String(power_setpoint_, 0));
+        logPrint("W, Error=");
+        logPrint(String(powerError, 0));
+        logPrint("W, Integrator=");
+        logPrint(String(force_integrator_, 0));
+        logPrint(", Output=");
+        logPrint(String(newPowerWatt[0], 0));
+        logPrintln("W");
       }
-      logPrint(" NewPower=");
-      logPrint(String(newPowerWatt[0],1));
-      logPrintln("W");
+      break;
+      
+    case MODE_OPTIMIZE: {
+      // Use DomoticzLogic for smart battery control
+      if (config_) {
+        // Ensure DomoticzLogic has config pointer
+        domoticz_logic_.setConfig(config_);
+        
+        float currentP1Delivery = -activePowerWatt[0];  // Current grid delivery (positive = export)
+        float solar = config_->actualSolarPower;
+        float evaCharge = (localBatteryPower < -10) ? abs(localBatteryPower) : 0;
+        float evaDischarge = (localBatteryPower > 10) ? localBatteryPower : 0;
+        float soc = config_->batterySOC;
+        int seconds = millis() / 1000;
+        
+        // Calculate power adjustment using DomoticzLogic
+        float adjustment = domoticz_logic_.calculate(currentP1Delivery, solar, 
+                                                     evaCharge, evaDischarge, soc, seconds);
+        
+        optimize_setpoint_ = domoticz_logic_.getDeliverySetpoint();
+        power_adjustment_ = adjustment;
+        
+        // Apply adjustment to power value
+        newPowerWatt[0] = activePowerWatt[0] + adjustment;
+        
+        logPrint("[OPTIMIZE] Current=");
+        logPrint(String(currentP1Delivery, 1));
+        logPrint("W, Setpoint=");
+        logPrint(String(optimize_setpoint_, 1));
+        logPrint("W, Adjustment=");
+        logPrint(String(adjustment, 1));
+        logPrint("W, Solar=");
+        logPrint(String(solar, 1));
+        logPrint("W, Battery=");
+        logPrint(String(localBatteryPower, 1));
+        logPrintln("W");
+        
+        // Update integrator every minute
+        static unsigned long lastMinuteUpdate = 0;
+        if (millis() - lastMinuteUpdate >= 60000) {
+          domoticz_logic_.updateMinute(currentP1Delivery);
+          lastMinuteUpdate = millis();
+        }
+      } else {
+        logPrintln("[OPTIMIZE] ERROR: Config not set! Use setConfig().");
+      }
       break;
     }
       
     default:
       break;
   }
-  
+  logPrint(" NewPower=");
+  logPrint(String(newPowerWatt[0],1));
+  logPrintln("W");
+
+
   // Add small noise AFTER mode calculations to help battery controller detect changes
   // This prevents wild fluctuations from integrators while ensuring value changes
-  if (++_noise > 1) _noise = -1; // Cycle through -1, 0, +1
-  newPowerWatt[0] += _noise ; // ±1W noise
+  //if (++noise_ > 1) noise_ = -1; // Cycle through -1, 0, +1
+  //newPowerWatt[0] += noise_ ; // ±1W noise
+  if (newPowerWatt[0] == last_power_watt_) {
+    // Ensure power changes slightly each telegram to help battery controller
+    newPowerWatt[0] += 1; // Change by at least 1W
+  }
+  last_power_watt_ = newPowerWatt[0];
   
   // Distribute to maintain correct 3-phase sum
   // Calculate delta needed to reach target total
@@ -306,13 +387,13 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
   float targetTotal = newPowerWatt[0];
   float deltaNeeded = targetTotal - currentSum;
   
-  if (modifyPhase < 1 || modifyPhase > 3) {
-    // Fallback safety: if modifyPhase is invalid, default to L1
-    modifyPhase = 1;
+  if (modify_phase_ < 1 || modify_phase_ > 3) {
+    // Fallback safety: if modify_phase_ is invalid, default to L1
+    modify_phase_ = 1;
   }
   
-  // Apply all the change to modifyPhase, keep other phases at original values
-  newPowerWatt[modifyPhase] = activePowerWatt[modifyPhase] + deltaNeeded;
+  // Apply all the change to modify_phase_, keep other phases at original values
+  newPowerWatt[modify_phase_] = activePowerWatt[modify_phase_] + deltaNeeded;
   // Other phases already set to original values at start of function
 
   // Apply modifications
@@ -413,9 +494,9 @@ float P1Modifier::updateIntegrator(float currentValue, float step, bool applyPos
   // Generic integrator helper: optionally apply symmetric step in both directions
   // Adjust step based on telegram interval (10s baseline, scale for faster intervals)
   float adjustedStep = step;
-  if (telegramIntervalSec < 5.0 && telegramIntervalSec > 0.5) {
+  if (telegram_interval_sec_ < 5.0 && telegram_interval_sec_ > 0.5) {
     // For ~1 second intervals, divide step by 10
-    adjustedStep = step * (telegramIntervalSec / 10.0);
+    adjustedStep = step * (telegram_interval_sec_ / 10.0);
   }
   
   if (applyPos) {
@@ -450,7 +531,7 @@ String P1Modifier::recalculateCRC(const String& telegram) {
   }
   
   // Append new CRC
-  return dataForCRC + newCRC;
+  return dataForCRC + newCRC + "\r\n";
 }
 
 // Get battery power direction trend accounting for system lag

@@ -158,28 +158,28 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Total Power</div>
                     <div class="metric-value" id="totalPower">0<span class="metric-unit">W</span></div>
-                    <div style="font-size: 0.85em; color: #856404; margin-top: 4px;">
+                    <div id="totalModifiedDiv" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="totalModifiedPower">0</strong> W
                     </div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Phase L1 Power</div>
                     <div class="metric-value" id="powerL1">0<span class="metric-unit">W</span></div>
-                    <div style="font-size: 0.85em; color: #856404; margin-top: 4px;">
+                    <div id="modifiedL1Div" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="modifiedPowerL1">0</strong> W
                     </div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Phase L2 Power</div>
                     <div class="metric-value" id="powerL2">0<span class="metric-unit">W</span></div>
-                    <div style="font-size: 0.85em; color: #856404; margin-top: 4px;">
+                    <div id="modifiedL2Div" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="modifiedPowerL2">0</strong> W
                     </div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Phase L3 Power</div>
                     <div class="metric-value" id="powerL3">0<span class="metric-unit">W</span></div>
-                    <div style="font-size: 0.85em; color: #856404; margin-top: 4px;">
+                    <div id="modifiedL3Div" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="modifiedPowerL3">0</strong> W
                     </div>
                 </div>
@@ -236,6 +236,10 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Battery Power</div>
                     <div class="metric-value" style="font-size: 1.0em;" id="batteryPower">-<span class="metric-unit">W</span></div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Solar Power</div>
+                    <div class="metric-value" id="solarPower">-<span class="metric-unit">W</span></div>
                 </div>
             </div>
             <div id="evaDisabled" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; color: #666; font-size: 0.9em;">
@@ -333,21 +337,38 @@ String getActualsPage() {
                     const current = p1Data.current || { l1: 0, l2: 0, l3: 0 };
                     const voltage = p1Data.voltage || {};
 
-                    document.getElementById('totalPower').innerHTML = Math.round((power.total || 0) * 1000) + '<span class="metric-unit">W</span>';
-                    document.getElementById('powerL1').innerHTML = Math.round((power.l1 || 0) * 1000) + '<span class="metric-unit">W</span>';
-                    document.getElementById('powerL2').innerHTML = Math.round((power.l2 || 0) * 1000) + '<span class="metric-unit">W</span>';
-                    document.getElementById('powerL3').innerHTML = Math.round((power.l3 || 0) * 1000) + '<span class="metric-unit">W</span>';
+                    const originalTotal = Math.round((power.total || 0) * 1000);
+                    const originalL1 = Math.round((power.l1 || 0) * 1000);
+                    const originalL2 = Math.round((power.l2 || 0) * 1000);
+                    const originalL3 = Math.round((power.l3 || 0) * 1000);
+                    
+                    const modifiedTotal = Math.round((modPower.total || 0) * 1000);
+                    const modifiedL1 = Math.round((modPower.l1 || 0) * 1000);
+                    const modifiedL2 = Math.round((modPower.l2 || 0) * 1000);
+                    const modifiedL3 = Math.round((modPower.l3 || 0) * 1000);
+                    
+                    document.getElementById('totalPower').innerHTML = originalTotal + '<span class="metric-unit">W</span>';
+                    document.getElementById('powerL1').innerHTML = originalL1 + '<span class="metric-unit">W</span>';
+                    document.getElementById('powerL2').innerHTML = originalL2 + '<span class="metric-unit">W</span>';
+                    document.getElementById('powerL3').innerHTML = originalL3 + '<span class="metric-unit">W</span>';
 
-                    // Synchronous modified values (same telegram as actuals)
-                    document.getElementById('totalModifiedPower').textContent = Math.round((modPower.total || 0) * 1000);
-                    document.getElementById('modifiedPowerL1').textContent = Math.round((modPower.l1 || 0) * 1000);
-                    document.getElementById('modifiedPowerL2').textContent = Math.round((modPower.l2 || 0) * 1000);
-                    document.getElementById('modifiedPowerL3').textContent = Math.round((modPower.l3 || 0) * 1000);
+                    // Show modified values only if different from original
+                    document.getElementById('totalModifiedPower').textContent = modifiedTotal;
+                    document.getElementById('totalModifiedDiv').style.display = (modifiedTotal !== originalTotal) ? 'block' : 'none';
+                    
+                    document.getElementById('modifiedPowerL1').textContent = modifiedL1;
+                    document.getElementById('modifiedL1Div').style.display = (modifiedL1 !== originalL1) ? 'block' : 'none';
+                    
+                    document.getElementById('modifiedPowerL2').textContent = modifiedL2;
+                    document.getElementById('modifiedL2Div').style.display = (modifiedL2 !== originalL2) ? 'block' : 'none';
+                    
+                    document.getElementById('modifiedPowerL3').textContent = modifiedL3;
+                    document.getElementById('modifiedL3Div').style.display = (modifiedL3 !== originalL3) ? 'block' : 'none';
 
                     const todayImport = (energy.todayImport != null) ? energy.todayImport : (energy.import || 0);
                     const todayExport = (energy.todayExport != null) ? energy.todayExport : (energy.export || 0);
-                    document.getElementById('energyImport').innerHTML = todayImport.toFixed(2) + '<span class="metric-unit">kWh</span>';
-                    document.getElementById('energyExport').innerHTML = todayExport.toFixed(2) + '<span class="metric-unit">kWh</span>';
+                    document.getElementById('energyImport').innerHTML = todayImport.toFixed(3) + '<span class="metric-unit">kWh</span>';
+                    document.getElementById('energyExport').innerHTML = todayExport.toFixed(3) + '<span class="metric-unit">kWh</span>';
 
                     document.getElementById('currentAll').innerHTML =
                         current.l1.toFixed(1) + ' / ' +
@@ -400,21 +421,27 @@ String getActualsPage() {
                 }
                 
                 document.getElementById('dsmrVersion').textContent = p1.dsmrVersion || '-';
-                document.getElementById('p1Interval').innerHTML = (p1.interval ? p1.interval.toFixed(1) : '-') + '<span class="metric-unit">s</span>';
+                document.getElementById('p1Interval').innerHTML = (p1.interval ? p1.interval.toFixed(0) : '-') + '<span class="metric-unit">s</span>';
 
                 // Update battery data
                 if (statusData.battery) {
                     document.getElementById('batterySOC').innerHTML = (statusData.battery.soc || 0) + '<span class="metric-unit">%</span>';
                     const batteryPower = statusData.battery.power || 0;
                     const gridPower = statusData.battery.gridPower || 0;
+                    const solarPower = statusData.battery.solarPower || 0;
                     const powerSign = batteryPower > 10 ? '⚡ Discharging' : batteryPower < -10 ? '🔋 Charging' : '🔌 Standby' ;
+
+                    document.getElementById('solarPower').innerHTML = solarPower + '<span class="metric-unit">W</span>';
 
 
                     let efficiencyText = '';
                     const absBatt = Math.abs(batteryPower);
                     const absGrid = Math.abs(gridPower);
                     if (absBatt > 1 && absGrid > 1) {
-                        const eff = Math.min(999.0, (absGrid / absBatt) * 100.0);
+                        // Always calculate as smaller/larger to keep efficiency <= 100%
+                        // Charging: battery stored / grid consumed (always < 100%)
+                        // Discharging: grid delivered / battery used (always < 100%)
+                        const eff = Math.min(100.0, (Math.min(absBatt, absGrid) / Math.max(absBatt, absGrid)) * 100.0);
                         efficiencyText = ' (' + eff.toFixed(0) + '%)';
                     }
                     document.getElementById('gridPower').innerHTML = gridPower + '<span class="metric-unit">W</span>'+ powerSign;

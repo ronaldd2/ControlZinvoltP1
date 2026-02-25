@@ -5,48 +5,48 @@
 #include "HomeAssistant.h"
 
 HomeAssistant::HomeAssistant(P1Parser* parser, P1Modifier* modifier, Config* config) {
-  _parser = parser;
-  _modifier = modifier;
-  _config = config;
-  _mqttClient.setClient(_wifiClient);
-  _lastReconnect = 0;
-  _lastPublish = 0;
-  _lastDiscovery = 0;
-  _mqttPort = 1883;
-  _publishRequested = false;
+  parser_ = parser;
+  modifier_ = modifier;
+  config_ = config;
+  mqtt_client_.setClient(wifi_client_);
+  last_reconnect_ = 0;
+  last_publish_ = 0;
+  last_discovery_ = 0;
+  mqtt_port_ = 1883;
+  publish_requested_ = false;
   
   // Generate unique device ID from MAC address
   uint8_t mac[6];
   WiFi.macAddress(mac);
-  _deviceId = "controlzinvoltp1_" + String(mac[3], HEX) + String(mac[4], HEX) + String(mac[5], HEX);
+  device_id_ = "controlzinvoltp1_" + String(mac[3], HEX) + String(mac[4], HEX) + String(mac[5], HEX);
 }
 
 void HomeAssistant::begin(const char* mqttServer, int mqttPort, 
                            const char* mqttUser, const char* mqttPassword) {
   setMqttConfig(mqttServer, mqttPort, mqttUser, mqttPassword);
   
-  _mqttClient.setServer(mqttServer, mqttPort);
-  _mqttClient.setCallback([this](char* topic, byte* payload, unsigned int length) {
+  mqtt_client_.setServer(mqttServer, mqttPort);
+  mqtt_client_.setCallback([this](char* topic, byte* payload, unsigned int length) {
     this->handleCommand(topic, payload, length);
   });
   
   Serial.println("Home Assistant MQTT initialized");
   Serial.printf("  Server: %s:%d\n", mqttServer, mqttPort);
-  Serial.printf("  Device ID: %s\n", _deviceId.c_str());
+  Serial.printf("  Device ID: %s\n", device_id_.c_str());
 }
 
 void HomeAssistant::setMqttConfig(const char* server, int port, const char* user, const char* pass) {
-  _mqttServer = server ? server : "";
-  _mqttPort = port;
-  _mqttUser = user ? user : "";
-  _mqttPassword = pass ? pass : "";
+  mqtt_server_ = server ? server : "";
+  mqtt_port_ = port;
+  mqtt_user_ = user ? user : "";
+  mqtt_password_ = pass ? pass : "";
 }
 
 void HomeAssistant::reconnectNow() {
-  if (_mqttClient.connected()) {
-    _mqttClient.disconnect();
+  if (mqtt_client_.connected()) {
+    mqtt_client_.disconnect();
   }
-  _lastReconnect = 0; // Force immediate reconnect
+  last_reconnect_ = 0; // Force immediate reconnect
 }
 
 void HomeAssistant::loop() {
@@ -57,59 +57,59 @@ void HomeAssistant::loop() {
   if (now - lastConnCheck > 1000) {
     lastConnCheck = now;
     // Force PubSubClient to check socket status
-    if (_mqttClient.connected()) {
-      _mqttClient.loop();  // This will detect broken connections
+    if (mqtt_client_.connected()) {
+      mqtt_client_.loop();  // This will detect broken connections
     }
   }
   
-  if (!_mqttClient.connected()) {
-    if (now - _lastReconnect > 5000) {
-      _lastReconnect = now;
+  if (!mqtt_client_.connected()) {
+    if (now - last_reconnect_ > 5000) {
+      last_reconnect_ = now;
       logPrintln("[MQTT] Reconnecting...");
       reconnect();
     }
   } else {
     // Publish only when a new P1 telegram was processed
-    if (_publishRequested && (now - _lastPublish > 200)) { // throttle to avoid bursts
-      _publishRequested = false;
-      _lastPublish = now;
+    if (publish_requested_ && (now - last_publish_ > 200)) { // throttle to avoid bursts
+      publish_requested_ = false;
+      last_publish_ = now;
       publishSensors();
     }
     
     // Republish discovery every 5 minutes
-    if (now - _lastDiscovery > 300000) {
-      _lastDiscovery = now;
+    if (now - last_discovery_ > 300000) {
+      last_discovery_ = now;
       publishDiscovery();
     }
   }
 }
 
 void HomeAssistant::requestPublish() {
-  _publishRequested = true;
+  publish_requested_ = true;
 }
 
 bool HomeAssistant::isConnected() {
-  return _mqttClient.connected();
+  return mqtt_client_.connected();
 }
 
 void HomeAssistant::reconnect() {
-  if (_mqttServer.isEmpty()) {
+  if (mqtt_server_.isEmpty()) {
     Serial.println("[MQTT] Server not configured!");
     return;
   }
   
   Serial.print("[MQTT] Connecting to ");
-  Serial.print(_mqttServer);
+  Serial.print(mqtt_server_);
   Serial.print(":");
-  Serial.println(_mqttPort);
+  Serial.println(mqtt_port_);
   
-  String clientId = _deviceId + "_" + String(random(0xffff), HEX);
+  String clientId = device_id_ + "_" + String(random(0xffff), HEX);
   
   bool connected;
-  if (_mqttUser.isEmpty()) {
-    connected = _mqttClient.connect(clientId.c_str());
+  if (mqtt_user_.isEmpty()) {
+    connected = mqtt_client_.connect(clientId.c_str());
   } else {
-    connected = _mqttClient.connect(clientId.c_str(), _mqttUser.c_str(), _mqttPassword.c_str());
+    connected = mqtt_client_.connect(clientId.c_str(), mqtt_user_.c_str(), mqtt_password_.c_str());
   }
   
   if (connected) {
@@ -117,25 +117,25 @@ void HomeAssistant::reconnect() {
     
     // Publish availability (online)
     String statusTopic = getBaseTopic() + "/status";
-    _mqttClient.publish(statusTopic.c_str(), "online", true);
+    mqtt_client_.publish(statusTopic.c_str(), "online", true);
     Serial.println("[MQTT] Published availability: online");
     
     String cmdTopic = getBaseTopic() + "/cmd/#";
-    _mqttClient.subscribe(cmdTopic.c_str());
+    mqtt_client_.subscribe(cmdTopic.c_str());
     publishDiscovery();
     publishSensors();
   } else {
     Serial.print("[MQTT] Failed, rc=");
-    Serial.println(_mqttClient.state());
+    Serial.println(mqtt_client_.state());
   }
 }
 
 String HomeAssistant::getBaseTopic() {
-  return "controlzinvoltp1/" + _deviceId;
+  return "controlzinvoltp1/" + device_id_;
 }
 
 String HomeAssistant::getDiscoveryTopic(const char* component, const char* objectId) {
-  return "homeassistant/" + String(component) + "/" + _deviceId + "/" + String(objectId) + "/config";
+  return "homeassistant/" + String(component) + "/" + device_id_ + "/" + String(objectId) + "/config";
 }
 
 void HomeAssistant::publishDiscovery() {
@@ -144,7 +144,7 @@ void HomeAssistant::publishDiscovery() {
   // Device information (common for all entities)
   JsonDocument deviceDoc;
   JsonArray identifiers = deviceDoc["identifiers"].to<JsonArray>();
-  identifiers.add(_deviceId);
+  identifiers.add(device_id_);
   deviceDoc["name"] = "ControlZinvolt P1";
   deviceDoc["model"] = "ESP32-S3 P1 Controller";
   deviceDoc["manufacturer"] = "Leotro Engineering";
@@ -185,6 +185,7 @@ void HomeAssistant::publishDiscovery() {
   publishNumber("Battery Capacity", "battery_capacity", "mdi:battery-high", 0, 100, 0.1, "kWh");
   publishNumber("Battery Production", "battery_production", "mdi:solar-power", 0, 50000, 1, "W");
   publishNumber("Battery Consumption", "battery_consumption", "mdi:transmission-tower", 0, 50000, 1, "W");
+  publishNumber("Solar Power Input", "solar_power", "mdi:solar-power", 0, 20000, 1, "W");
   
   // === Operation Mode Select ===
   publishSelect("Operation Mode", "operation_mode", "mdi:cog");
@@ -210,7 +211,7 @@ void HomeAssistant::publishSensor(const char* name, const char* objectId,
                                    const char* deviceClass, const char* unit, const char* icon) {
   JsonDocument doc;
   doc["name"] = name;
-  doc["unique_id"] = _deviceId + "_" + String(objectId);
+  doc["unique_id"] = device_id_ + "_" + String(objectId);
   doc["state_topic"] = getBaseTopic() + "/state";
   doc["value_template"] = "{{ value_json." + String(objectId) + " }}";
   
@@ -225,7 +226,7 @@ void HomeAssistant::publishSensor(const char* name, const char* objectId,
   // Add device info
   JsonObject device = doc["device"].to<JsonObject>();
   JsonArray identifiers = device["identifiers"].to<JsonArray>();
-  identifiers.add(_deviceId);
+  identifiers.add(device_id_);
   device["name"] = "ControlZinvolt P1";
   device["model"] = "ESP32-S3 P1 Controller";
   device["manufacturer"] = "AI";
@@ -234,13 +235,13 @@ void HomeAssistant::publishSensor(const char* name, const char* objectId,
   serializeJson(doc, payload);
   
   String topic = getDiscoveryTopic("sensor", objectId);
-  _mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqtt_client_.publish(topic.c_str(), payload.c_str(), true);
 }
 
 void HomeAssistant::publishBinarySensor(const char* name, const char* objectId, const char* deviceClass) {
   JsonDocument doc;
   doc["name"] = name;
-  doc["unique_id"] = _deviceId + "_" + String(objectId);
+  doc["unique_id"] = device_id_ + "_" + String(objectId);
   doc["state_topic"] = getBaseTopic() + "/state";
   doc["value_template"] = "{{ value_json." + String(objectId) + " }}";
   doc["payload_on"] = "true";
@@ -255,20 +256,20 @@ void HomeAssistant::publishBinarySensor(const char* name, const char* objectId, 
   // Add device info
   JsonObject device = doc["device"].to<JsonObject>();
   JsonArray identifiers = device["identifiers"].to<JsonArray>();
-  identifiers.add(_deviceId);
+  identifiers.add(device_id_);
   device["name"] = "ControlZinvolt P1";
   
   String payload;
   serializeJson(doc, payload);
   
   String topic = getDiscoveryTopic("binary_sensor", objectId);
-  _mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqtt_client_.publish(topic.c_str(), payload.c_str(), true);
 }
 
 void HomeAssistant::publishSelect(const char* name, const char* objectId, const char* icon) {
   JsonDocument doc;
   doc["name"] = name;
-  doc["unique_id"] = _deviceId + "_" + String(objectId);
+  doc["unique_id"] = device_id_ + "_" + String(objectId);
   doc["state_topic"] = getBaseTopic() + "/state";
   doc["command_topic"] = getBaseTopic() + "/cmd/" + String(objectId);
   
@@ -279,8 +280,11 @@ void HomeAssistant::publishSelect(const char* name, const char* objectId, const 
     options.add("Off");
     options.add("Force Charge");
     options.add("Force Discharge");
+    options.add("Power Control");
     options.add("Charge Only");
     options.add("Discharge Only");
+    options.add("External Control");
+    options.add("Optimize");
   } else if (strcmp(objectId, "battery_phase") == 0) {
     doc["value_template"] = "{{ value_json.battery_phase }}";
     JsonArray options = doc["options"].to<JsonArray>();
@@ -302,21 +306,21 @@ void HomeAssistant::publishSelect(const char* name, const char* objectId, const 
   // Add device info
   JsonObject device = doc["device"].to<JsonObject>();
   JsonArray identifiers = device["identifiers"].to<JsonArray>();
-  identifiers.add(_deviceId);
+  identifiers.add(device_id_);
   device["name"] = "ControlZinvolt P1";
   
   String payload;
   serializeJson(doc, payload);
   
   String topic = getDiscoveryTopic("select", objectId);
-  _mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqtt_client_.publish(topic.c_str(), payload.c_str(), true);
 }
 
 void HomeAssistant::publishNumber(const char* name, const char* objectId, const char* icon,
                                    float min, float max, float step, const char* unit) {
   JsonDocument doc;
   doc["name"] = name;
-  doc["unique_id"] = _deviceId + "_" + String(objectId);
+  doc["unique_id"] = device_id_ + "_" + String(objectId);
   doc["state_topic"] = getBaseTopic() + "/state";
   doc["command_topic"] = getBaseTopic() + "/cmd/" + String(objectId);
   doc["value_template"] = "{{ value_json." + String(objectId) + " }}";
@@ -332,18 +336,18 @@ void HomeAssistant::publishNumber(const char* name, const char* objectId, const 
   // Add device info
   JsonObject device = doc["device"].to<JsonObject>();
   JsonArray identifiers = device["identifiers"].to<JsonArray>();
-  identifiers.add(_deviceId);
+  identifiers.add(device_id_);
   device["name"] = "ControlZinvolt P1";
   
   String payload;
   serializeJson(doc, payload);
   
   String topic = getDiscoveryTopic("number", objectId);
-  _mqttClient.publish(topic.c_str(), payload.c_str(), true);
+  mqtt_client_.publish(topic.c_str(), payload.c_str(), true);
 }
 
 void HomeAssistant::publishSensors() {
-  if (!_mqttClient.connected()) {
+  if (!mqtt_client_.connected()) {
     logPrintln("[MQTT] publishSensors: not connected!");
     return;
   }
@@ -358,16 +362,16 @@ void HomeAssistant::publishSensors() {
   JsonDocument doc;
   
   // Cache values to ensure consistent sign handling per publish cycle
-  float l1Power = _parser->getActivePowerL1();
-  float l2Power = _parser->getActivePowerL2();
-  float l3Power = _parser->getActivePowerL3();
+  float l1Power = parser_->getActivePowerL1();
+  float l2Power = parser_->getActivePowerL2();
+  float l3Power = parser_->getActivePowerL3();
   float totalPower = l1Power + l2Power + l3Power;
-  float l1Current = _parser->getCurrentL1();
-  float l2Current = _parser->getCurrentL2();
-  float l3Current = _parser->getCurrentL3();
-  float v1 = _parser->getVoltageL1();
-  float v2 = _parser->getVoltageL2();
-  float v3 = _parser->getVoltageL3();
+  float l1Current = parser_->getCurrentL1();
+  float l2Current = parser_->getCurrentL2();
+  float l3Current = parser_->getCurrentL3();
+  float v1 = parser_->getVoltageL1();
+  float v2 = parser_->getVoltageL2();
+  float v3 = parser_->getVoltageL3();
   
   // P1 Power data
   doc["total_power"] = round(totalPower * 1000);
@@ -386,17 +390,17 @@ void HomeAssistant::publishSensors() {
   doc["l3_voltage"] = v3;
   
   // Energy data
-  doc["energy_import"] = _parser->getTotalEnergyImport();
-  doc["energy_export"] = _parser->getTotalEnergyExport();
+  doc["energy_import"] = parser_->getTotalEnergyImport();
+  doc["energy_export"] = parser_->getTotalEnergyExport();
 
   // Daily energy (relative to start of day baselines)
   float dailyImport = 0.0f;
   float dailyExport = 0.0f;
-  if (_config->dayStartEnergyImport > 0.0f) {
-    dailyImport = max(0.0f, _parser->getTotalEnergyImport() - _config->dayStartEnergyImport);
+  if (config_->dayStartEnergyImport > 0.0f) {
+    dailyImport = max(0.0f, parser_->getTotalEnergyImport() - config_->dayStartEnergyImport);
   }
-  if (_config->dayStartEnergyExport > 0.0f) {
-    dailyExport = max(0.0f, _parser->getTotalEnergyExport() - _config->dayStartEnergyExport);
+  if (config_->dayStartEnergyExport > 0.0f) {
+    dailyExport = max(0.0f, parser_->getTotalEnergyExport() - config_->dayStartEnergyExport);
   }
   doc["daily_energy_import"] = dailyImport;
   doc["daily_energy_export"] = dailyExport;
@@ -407,29 +411,29 @@ void HomeAssistant::publishSensors() {
   doc["free_heap"] = ESP.getFreeHeap();
   
   // P1 valid status (send as string to match binary_sensor payload_on/payload_off)
-  doc["p1_valid"] = _parser->isValid() ? "true" : "false";
+  doc["p1_valid"] = parser_->isValid() ? "true" : "false";
   
   // Battery data (from config)
-  doc["battery_soc"] = _config->batterySOC;
-  doc["battery_power"] = _config->batteryPower;
-  doc["grid_power"] = _config->gridPower;
-  doc["battery_capacity"] = _config->batteryCapacity;
-  doc["battery_production"] = _config->batteryProduction;
-  doc["battery_consumption"] = _config->batteryConsumption;
+  doc["battery_soc"] = config_->batterySOC;
+  doc["battery_power"] = config_->batteryPower;
+  doc["grid_power"] = config_->gridPower;
+  doc["battery_capacity"] = config_->batteryCapacity;
+  doc["battery_production"] = config_->batteryProduction;
+  doc["battery_consumption"] = config_->batteryConsumption;
   
   // Operation mode
-  String modeStr = _modifier->getModeString();
+  String modeStr = modifier_->getModeString();
   doc["operation_mode"] = modeStr;
   
   // Phase configuration
-  int battPhase = _modifier->getBatteryPhase();
+  int battPhase = modifier_->getBatteryPhase();
   doc["battery_phase"] = "L" + String(battPhase);
   
-  int modPhase = _modifier->getModifyPhase();
+  int modPhase = modifier_->getModifyPhase();
   doc["modify_phase"] = "L" + String(modPhase);
   
   // Force power
-  doc["force_power"] = _modifier->getForcePower();
+  doc["force_power"] = modifier_->getForcePower();
   
   String payload;
   serializeJson(doc, payload);
@@ -441,29 +445,29 @@ void HomeAssistant::publishSensors() {
   logPrintln(String(payload.length()));
   
   // Ensure client is still connected and responsive
-  if (!_mqttClient.connected()) {
+  if (!mqtt_client_.connected()) {
     logPrintln("[MQTT] Client disconnected before publish!");
     return;
   }
   
   // Call loop to process any pending messages
-  _mqttClient.loop();
+  mqtt_client_.loop();
   
   // Try to publish
-  bool published = _mqttClient.publish(stateTopic.c_str(), (uint8_t*)payload.c_str(), payload.length(), false);
+  bool published = mqtt_client_.publish(stateTopic.c_str(), (uint8_t*)payload.c_str(), payload.length(), false);
   
   if (!published) {
     logPrint("[MQTT] Publish FAILED! State: ");
-    logPrint(String(_mqttClient.state()));
+    logPrint(String(mqtt_client_.state()));
     logPrint(", Connected: ");
-    logPrintln(String(_mqttClient.connected()));
+    logPrintln(String(mqtt_client_.connected()));
   } else {
     logPrintln("[MQTT] Publish success!");
   }
   
   // Keep availability topic fresh (Home Assistant heartbeat)
   String statusTopic = getBaseTopic() + "/status";
-  _mqttClient.publish(statusTopic.c_str(), "online", true);
+  mqtt_client_.publish(statusTopic.c_str(), "online", true);
 }
 
 void HomeAssistant::handleCommand(char* topic, byte* payload, unsigned int length) {
@@ -481,68 +485,78 @@ void HomeAssistant::handleCommand(char* topic, byte* payload, unsigned int lengt
     String command = topicStr.substring(baseTopic.length());
     
     if (command == "operation_mode") {
-      if (payloadStr == "Unmodified Forward") _modifier->setMode(MODE_UNMODIFIED);
-      else if (payloadStr == "Off") _modifier->setMode(MODE_OFF);
-      else if (payloadStr == "Force Charge") _modifier->setMode(MODE_FORCE_CHARGE);
-      else if (payloadStr == "Force Discharge") _modifier->setMode(MODE_FORCE_DISCHARGE);
-      else if (payloadStr == "Charge Only") _modifier->setMode(MODE_CHARGE_ONLY);
-      else if (payloadStr == "Discharge Only") _modifier->setMode(MODE_DISCHARGE_ONLY);
+      if (payloadStr == "Unmodified Forward") modifier_->setMode(MODE_UNMODIFIED);
+      else if (payloadStr == "Off") modifier_->setMode(MODE_BATTERY_OFF);
+      else if (payloadStr == "Force Charge") modifier_->setMode(MODE_FORCE_CHARGE);
+      else if (payloadStr == "Force Discharge") modifier_->setMode(MODE_FORCE_DISCHARGE);
+      else if (payloadStr == "Power Control") modifier_->setMode(MODE_POWER_CONTROL);
+      else if (payloadStr == "Charge Only") modifier_->setMode(MODE_CHARGE_ONLY);
+      else if (payloadStr == "Discharge Only") modifier_->setMode(MODE_DISCHARGE_ONLY);
+      else if (payloadStr == "External Control") modifier_->setMode(MODE_EXTERNAL_CONTROL);
+      else if (payloadStr == "Optimize") modifier_->setMode(MODE_OPTIMIZE);
       
-      _config->operationMode = _modifier->getMode();
+      config_->operationMode = modifier_->getMode();
       Serial.printf("Mode changed to: %s\n", payloadStr.c_str());
     }
     else if (command == "battery_phase") {
       int phase = payloadStr.substring(1).toInt(); // Remove 'L' prefix
       if (phase >= 1 && phase <= 3) {
-        _modifier->setBatteryPhase(phase);
-        _config->batteryPhase = phase;
+        modifier_->setBatteryPhase(phase);
+        config_->batteryPhase = phase;
         Serial.printf("Battery phase set to: L%d\n", phase);
       }
     }
     else if (command == "modify_phase") {
       int phase = payloadStr.substring(1).toInt(); // Remove 'L' prefix
       if (phase >= 1 && phase <= 3) {
-        _modifier->setModifyPhase(phase);
-        _config->modifyPhase = phase;
+        modifier_->setModifyPhase(phase);
+        config_->modifyPhase = phase;
         Serial.printf("Modify phase set to: L%d\n", phase);
       }
     }
     else if (command == "force_power") {
       float power = payloadStr.toFloat();
       if (power >= 0 && power <= 20000) {
-        _modifier->setForcePower(power);
-        _config->forcePower = power;
+        modifier_->setForcePower(power);
+        config_->forcePower = power;
         Serial.printf("Force power set to: %.1f W\n", power);
       }
     }
     else if (command == "battery_soc") {
       float soc = payloadStr.toFloat();
       if (soc >= 0.0f && soc <= 100.0f) {
-        _config->batterySOC = soc;
+        config_->batterySOC = soc;
         Serial.printf("Battery SOC set to: %.1f %%\n", soc);
       }
     }
     else if (command == "battery_power") {
       float p = payloadStr.toFloat();
-      _config->batteryPower = p;
+      config_->batteryPower = p;
       Serial.printf("Battery power set to: %.1f W\n", p);
     }
     else if (command == "battery_capacity") {
       float cap = payloadStr.toFloat();
       if (cap >= 0.0f) {
-        _config->batteryCapacity = cap;
+        config_->batteryCapacity = cap;
         Serial.printf("Battery capacity set to: %.2f kWh\n", cap);
       }
     }
     else if (command == "battery_production") {
       float prod = payloadStr.toFloat();
-      _config->batteryProduction = prod;
+      config_->batteryProduction = prod;
       Serial.printf("Battery production set to: %.1f W\n", prod);
     }
     else if (command == "battery_consumption") {
       float cons = payloadStr.toFloat();
-      _config->batteryConsumption = cons;
+      config_->batteryConsumption = cons;
       Serial.printf("Battery consumption set to: %.1f W\n", cons);
+    }
+    else if (command == "solar_power") {
+      float solar = payloadStr.toFloat();
+      if (solar >= 0.0f && solar <= 20000.0f) {
+        config_->actualSolarPower = solar;
+        Serial.printf("Solar power set to: %.1f W\n", solar);
+      }
     }
     
     // Publish updated state immediately

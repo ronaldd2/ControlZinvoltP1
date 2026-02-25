@@ -13,13 +13,35 @@ void Config::reset() {
   batteryPhase = 1;
   modifyPhase = 1;
   forcePower = 2000.0;
+  powerSetpoint = 0.0;   // Default 0W (neutral)
   selfUseLimitThreshold = 20.0;   // Default 20W extra export
   selfUseSmoothingFactor = 0.3;   // Default moderate smoothing
+  
+  // Optimize mode defaults
+  optimizeDeliverySetpoint = 20.0;
+  optimizeMinEvaActivity = 10.0;
+  optimizeMinSolarPower = 20.0;
+  optimizeSolarThreshold = 300.0;
+  optimizeHighSolarSetpoint = 100.0;
+  optimizeMinDeliveryForAdjust = 60.0;
+  optimizeAdjustDivisor = 3.0;
+  optimizeToleranceLow = -5.0;
+  optimizeToleranceHigh = 15.0;
+  optimizeLargeErrorThreshold = 200.0;
+  optimizeIntegratorReduction = 0.66;
+  optimizeHysteresisDelivery = 40.0;
+  optimizeHysteresisAdjustment = -50.0;
+  optimizeIntegratorMin = -10.0;
+  optimizeIntegratorMax = 10.0;
+  optimizeIntegratorStep = 1.0;
+  optimizeErrorDeadband = 5.0;
+  
   batterySOC = 0.0;
   batteryPower = 0.0;
   batteryCapacity = 0.0;
   batteryProduction = 0.0;
   batteryConsumption = 0.0;
+  actualSolarPower = 0.0;
   modifiedPowerL1 = 0.0;
   modifiedPowerL2 = 0.0;
   modifiedPowerL3 = 0.0;
@@ -57,8 +79,29 @@ void Config::load(Preferences& prefs) {
   batteryPhase = prefs.getInt("battPhase", 1);
   modifyPhase = prefs.getInt("modPhase", 1);
   forcePower = prefs.getFloat("forcePower", 3000.0);
+  powerSetpoint = prefs.getFloat("powerSetpoint", 0.0);
   selfUseLimitThreshold = prefs.getFloat("selfUseThresh", 20.0);
   selfUseSmoothingFactor = prefs.getFloat("selfUseSmooth", 0.3);
+  
+  // Optimize mode parameters
+  optimizeDeliverySetpoint = prefs.getFloat("optDelSetpt", 20.0);
+  optimizeMinEvaActivity = prefs.getFloat("optMinEva", 10.0);
+  optimizeMinSolarPower = prefs.getFloat("optMinSolar", 20.0);
+  optimizeSolarThreshold = prefs.getFloat("optSolarThr", 300.0);
+  optimizeHighSolarSetpoint = prefs.getFloat("optHiSolSet", 100.0);
+  optimizeMinDeliveryForAdjust = prefs.getFloat("optMinDelAdj", 60.0);
+  optimizeAdjustDivisor = prefs.getFloat("optAdjDiv", 3.0);
+  optimizeToleranceLow = prefs.getFloat("optTolLow", -5.0);
+  optimizeToleranceHigh = prefs.getFloat("optTolHigh", 15.0);
+  optimizeLargeErrorThreshold = prefs.getFloat("optLrgErrThr", 200.0);
+  optimizeIntegratorReduction = prefs.getFloat("optIntRed", 0.66);
+  optimizeHysteresisDelivery = prefs.getFloat("optHysDel", 40.0);
+  optimizeHysteresisAdjustment = prefs.getFloat("optHysAdj", -50.0);
+  optimizeIntegratorMin = prefs.getFloat("optIntMin", -10.0);
+  optimizeIntegratorMax = prefs.getFloat("optIntMax", 10.0);
+  optimizeIntegratorStep = prefs.getFloat("optIntStep", 1.0);
+  optimizeErrorDeadband = prefs.getFloat("optErrDead", 5.0);
+  
   mqttServer = prefs.getString("mqttServer", "");
   mqttPort = prefs.getInt("mqttPort", 1883);
   mqttUser = prefs.getString("mqttUser", "");
@@ -116,10 +159,30 @@ void Config::save(Preferences& prefs) {
   prefs.putInt("battPhase", batteryPhase);
   prefs.putInt("modPhase", modifyPhase);
   prefs.putFloat("forcePower", forcePower);
+  prefs.putFloat("powerSetpoint", powerSetpoint);
   
   // Self-use limiter settings
   prefs.putFloat("selfUseThresh", selfUseLimitThreshold);
   prefs.putFloat("selfUseSmooth", selfUseSmoothingFactor);
+  
+  // Optimize mode settings
+  prefs.putFloat("optDelSetpt", optimizeDeliverySetpoint);
+  prefs.putFloat("optMinEva", optimizeMinEvaActivity);
+  prefs.putFloat("optMinSolar", optimizeMinSolarPower);
+  prefs.putFloat("optSolarThr", optimizeSolarThreshold);
+  prefs.putFloat("optHiSolSet", optimizeHighSolarSetpoint);
+  prefs.putFloat("optMinDelAdj", optimizeMinDeliveryForAdjust);
+  prefs.putFloat("optAdjDiv", optimizeAdjustDivisor);
+  prefs.putFloat("optTolLow", optimizeToleranceLow);
+  prefs.putFloat("optTolHigh", optimizeToleranceHigh);
+  prefs.putFloat("optLrgErrThr", optimizeLargeErrorThreshold);
+  prefs.putFloat("optIntRed", optimizeIntegratorReduction);
+  prefs.putFloat("optHysDel", optimizeHysteresisDelivery);
+  prefs.putFloat("optHysAdj", optimizeHysteresisAdjustment);
+  prefs.putFloat("optIntMin", optimizeIntegratorMin);
+  prefs.putFloat("optIntMax", optimizeIntegratorMax);
+  prefs.putFloat("optIntStep", optimizeIntegratorStep);
+  prefs.putFloat("optErrDead", optimizeErrorDeadband);
   
   // MQTT Configuration
   prefs.putString("mqttServer", mqttServer);

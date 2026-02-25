@@ -21,10 +21,10 @@ public:
   void begin();
   
 private:
-  AsyncWebServer* _server;
-  P1Parser* _parser;
-  P1Modifier* _modifier;
-  Config* _config;
+  AsyncWebServer* server_;
+  P1Parser* parser_;
+  P1Modifier* modifier_;
+  Config* config_;
   
   // Web page handlers
   void handleRoot(AsyncWebServerRequest* request);
@@ -38,6 +38,7 @@ private:
   void handleSetMode(AsyncWebServerRequest* request);
   void handleSetPhase(AsyncWebServerRequest* request);
   void handleSetPower(AsyncWebServerRequest* request);
+  void handleSetPowerSetpoint(AsyncWebServerRequest* request);
   void handleGetConfig(AsyncWebServerRequest* request);
   void handleGetP1Data(AsyncWebServerRequest* request);
   void handleGetMqttConfig(AsyncWebServerRequest* request);
@@ -47,8 +48,8 @@ private:
   void handleReboot(AsyncWebServerRequest* request);
   void handleGetEvaConfig(AsyncWebServerRequest* request);
   void handleSetEvaConfig(AsyncWebServerRequest* request);
-  void handleGetSelfUseConfig(AsyncWebServerRequest* request);
-  void handleSetSelfUseConfig(AsyncWebServerRequest* request);
+  void handleGetOptimizeConfig(AsyncWebServerRequest* request);
+  void handleSetOptimizeConfig(AsyncWebServerRequest* request);
   void handleSetExternalControl(AsyncWebServerRequest* request);
   
   // Helper functions

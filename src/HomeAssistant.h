@@ -44,25 +44,25 @@ public:
   void reconnectNow();
   
 private:
-  WiFiClient _wifiClient;
-  PubSubClient _mqttClient;
-  P1Parser* _parser;
-  P1Modifier* _modifier;
-  Config* _config;
+  WiFiClient wifi_client_;
+  PubSubClient mqtt_client_;
+  P1Parser* parser_;
+  P1Modifier* modifier_;
+  Config* config_;
   
   // MQTT settings
-  String _mqttServer;
-  int _mqttPort;
-  String _mqttUser;
-  String _mqttPassword;
-  String _deviceId;
+  String mqtt_server_;
+  int mqtt_port_;
+  String mqtt_user_;
+  String mqtt_password_;
+  String device_id_;
   
   // Timing
-  unsigned long _lastReconnect;
-  unsigned long _lastPublish;
-  unsigned long _lastDiscovery;
+  unsigned long last_reconnect_;
+  unsigned long last_publish_;
+  unsigned long last_discovery_;
 
-  bool _publishRequested;
+  bool publish_requested_;
   
   // Connection management
   void reconnect();

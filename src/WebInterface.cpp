@@ -13,43 +13,43 @@
 extern Preferences preferences;
 
 WebInterface::WebInterface(AsyncWebServer* server, P1Parser* parser, P1Modifier* modifier, Config* config) {
-  _server = server;
-  _parser = parser;
-  _modifier = modifier;
-  _config = config;
+  server_ = server;
+  parser_ = parser;
+  modifier_ = modifier;
+  config_ = config;
 }
 
 void WebInterface::begin() {
     auto checkAuth = [this](AsyncWebServerRequest* request) {
-        if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+        if (!request->authenticate(config_->webUsername.c_str(), config_->webPassword.c_str())) {
             request->requestAuthentication();
             return false;
         }
         return true;
     };
 
-    _server->on("/", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
+    server_->on("/", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
         if (!checkAuth(request)) {
             return;
         }
         handleActualsPage(request);
     });
 
-    _server->on("/actuals", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
+    server_->on("/actuals", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
         if (!checkAuth(request)) {
             return;
         }
         handleActualsPage(request);
     });
 
-    _server->on("/settings", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
+    server_->on("/settings", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
         if (!checkAuth(request)) {
             return;
         }
         handleSettingsPage(request);
     });
 
-    _server->on("/update", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
+    server_->on("/update", HTTP_GET, [this, checkAuth](AsyncWebServerRequest* request) {
         if (!checkAuth(request)) {
             return;
         }
@@ -57,79 +57,83 @@ void WebInterface::begin() {
     });
   
   // REST API endpoints (no authentication required)
-  _server->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/status", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetStatus(request);
   });
   
-  _server->on("/api/p1data", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/p1data", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetP1Data(request);
   });
   
-  _server->on("/api/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/mode", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleSetMode(request);
   });
   
-  _server->on("/api/phase", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/phase", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleSetPhase(request);
   });
   
-  _server->on("/api/power", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/power", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleSetPower(request);
   });
   
-  _server->on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/setpoint", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    handleSetPowerSetpoint(request);
+  });
+  
+  server_->on("/api/config", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetConfig(request);
   });
   
-  _server->on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/mqtt", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetMqttConfig(request);
   });
   
-  _server->on("/api/mqtt", HTTP_POST, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/mqtt", HTTP_POST, [this](AsyncWebServerRequest* request) {
     handleSetMqttConfig(request);
   });
   
-  _server->on("/api/advanced", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/advanced", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetAdvancedConfig(request);
   });
   
-  _server->on("/api/advanced", HTTP_POST, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/advanced", HTTP_POST, [this](AsyncWebServerRequest* request) {
     handleSetAdvancedConfig(request);
   });
   
-  _server->on("/api/reboot", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/reboot", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleReboot(request);
   });
   
-  _server->on("/api/eva", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/eva", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleGetEvaConfig(request);
   });
   
-  _server->on("/api/eva", HTTP_POST, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/eva", HTTP_POST, [this](AsyncWebServerRequest* request) {
     handleSetEvaConfig(request);
   });
   
-  _server->on("/api/selfuse", HTTP_GET, [this](AsyncWebServerRequest* request) {
-    handleGetSelfUseConfig(request);
+  server_->on("/api/optimize", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    handleGetOptimizeConfig(request);
   });
   
-  _server->on("/api/selfuse", HTTP_POST, [this](AsyncWebServerRequest* request) {
-    handleSetSelfUseConfig(request);
+  server_->on("/api/optimize", HTTP_POST, [this](AsyncWebServerRequest* request) {
+    handleSetOptimizeConfig(request);
   });
   
-  _server->on("/api/external", HTTP_GET, [this](AsyncWebServerRequest* request) {
+  server_->on("/api/external", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleSetExternalControl(request);
   });
   
   // 404 handler
-  _server->onNotFound([this](AsyncWebServerRequest* request) {
+  server_->onNotFound([this](AsyncWebServerRequest* request) {
     handleNotFound(request);
   });
 
   // Manual OTA update handler with authentication and validation
-  _server->on("/update", HTTP_POST, 
+  server_->on("/update", HTTP_POST, 
     [this](AsyncWebServerRequest *request) {
-      if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      if (!request->authenticate(config_->webUsername.c_str(), config_->webPassword.c_str())) {
         return request->requestAuthentication();
       }
       
@@ -146,7 +150,7 @@ void WebInterface::begin() {
       }
     },
     [this](AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
-      if (!request->authenticate(_config->webUsername.c_str(), _config->webPassword.c_str())) {
+      if (!request->authenticate(config_->webUsername.c_str(), config_->webPassword.c_str())) {
         return;
       }
       
@@ -219,44 +223,44 @@ void WebInterface::handleGetStatus(AsyncWebServerRequest* request) {
 void WebInterface::handleGetP1Data(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
-  doc["valid"] = _parser->isValid();
-  doc["timestamp"] = _parser->getTimestamp();
+  doc["valid"] = parser_->isValid();
+  doc["timestamp"] = parser_->getTimestamp();
   
   // Power data
   JsonObject power = doc["power"].to<JsonObject>();
-    power["total"] = _config->actualTotalPower;
-    power["l1"] = _config->actualPowerL1;
-    power["l2"] = _config->actualPowerL2;
-    power["l3"] = _config->actualPowerL3;
+    power["total"] = config_->actualTotalPower;
+    power["l1"] = config_->actualPowerL1;
+    power["l2"] = config_->actualPowerL2;
+    power["l3"] = config_->actualPowerL3;
 
     // Modified power data (kept in sync with last processed telegram)
     JsonObject mod = doc["modifier"].to<JsonObject>();
-    mod["total"] = _config->totalModifiedPower;
-    mod["l1"] = _config->modifiedPowerL1;
-    mod["l2"] = _config->modifiedPowerL2;
-    mod["l3"] = _config->modifiedPowerL3;
+    mod["total"] = config_->totalModifiedPower;
+    mod["l1"] = config_->modifiedPowerL1;
+    mod["l2"] = config_->modifiedPowerL2;
+    mod["l3"] = config_->modifiedPowerL3;
   
   // Voltage data
   JsonObject voltage = doc["voltage"].to<JsonObject>();
-  voltage["l1"] = _parser->getVoltageL1();
-  voltage["l2"] = _parser->getVoltageL2();
-  voltage["l3"] = _parser->getVoltageL3();
+  voltage["l1"] = parser_->getVoltageL1();
+  voltage["l2"] = parser_->getVoltageL2();
+  voltage["l3"] = parser_->getVoltageL3();
   
   // Current data
   JsonObject current = doc["current"].to<JsonObject>();
-  current["l1"] = _parser->getCurrentL1();
-  current["l2"] = _parser->getCurrentL2();
-  current["l3"] = _parser->getCurrentL3();
+  current["l1"] = parser_->getCurrentL1();
+  current["l2"] = parser_->getCurrentL2();
+  current["l3"] = parser_->getCurrentL3();
   
   // Energy data
   JsonObject energy = doc["energy"].to<JsonObject>();
-    float totalImport = _parser->getTotalEnergyImport();
-    float totalExport = _parser->getTotalEnergyExport();
+    float totalImport = parser_->getTotalEnergyImport();
+    float totalExport = parser_->getTotalEnergyExport();
     energy["import"] = totalImport;   // lifetime (kWh)
     energy["export"] = totalExport;   // lifetime (kWh)
     // Today's values: (current - baseline at day start)
-    float todayImport = totalImport - _config->dayStartEnergyImport;
-    float todayExport = totalExport - _config->dayStartEnergyExport;
+    float todayImport = totalImport - config_->dayStartEnergyImport;
+    float todayExport = totalExport - config_->dayStartEnergyExport;
     if (todayImport < 0) todayImport = 0;
     if (todayExport < 0) todayExport = 0;
     energy["todayImport"] = todayImport;
@@ -275,16 +279,16 @@ void WebInterface::handleSetMode(AsyncWebServerRequest* request) {
   
   int mode = request->getParam("value")->value().toInt();
   
-  if (mode < 0 || mode > 7) {
-    request->send(400, "application/json", "{\"error\":\"Invalid mode value (0-7)\"}");
+  if (mode < 0 || mode > 8) {
+    request->send(400, "application/json", "{\"error\":\"Invalid mode value (0-8)\"}");
     return;
   }
   
-  _modifier->setMode((OperationMode)mode);
-  _config->operationMode = (OperationMode)mode;
-  _config->save(preferences);
+  modifier_->setMode((OperationMode)mode);
+  config_->operationMode = (OperationMode)mode;
+  config_->save(preferences);
   
-  Serial.printf("Mode changed to: %s\n", _modifier->getModeString().c_str());
+  Serial.printf("Mode changed to: %s\n", modifier_->getModeString().c_str());
   
   request->send(200, "application/json", "{\"success\":true,\"mode\":" + String(mode) + "}");
 }
@@ -304,9 +308,9 @@ void WebInterface::handleSetPhase(AsyncWebServerRequest* request) {
       request->send(400, "application/json", "{\"error\":\"Invalid battery phase (1-3)\"}");
       return;
     }
-    _modifier->setBatteryPhase(phase);
-    _config->batteryPhase = phase;
-    _config->save(preferences);
+    modifier_->setBatteryPhase(phase);
+    config_->batteryPhase = phase;
+    config_->save(preferences);
     doc["batteryPhase"] = phase;
     Serial.printf("Battery phase set to: %d\n", phase);
   }
@@ -317,9 +321,9 @@ void WebInterface::handleSetPhase(AsyncWebServerRequest* request) {
       request->send(400, "application/json", "{\"error\":\"Invalid modify phase (1-3)\"}");
       return;
     }
-    _modifier->setModifyPhase(phase);
-    _config->modifyPhase = phase;
-    _config->save(preferences);
+    modifier_->setModifyPhase(phase);
+    config_->modifyPhase = phase;
+    config_->save(preferences);
     doc["modifyPhase"] = phase;
     Serial.printf("Modify phase set to: %d\n", phase);
   }
@@ -342,23 +346,46 @@ void WebInterface::handleSetPower(AsyncWebServerRequest* request) {
     return;
   }
   
-  _modifier->setForcePower(power);
-  _config->forcePower = power;
-  _config->save(preferences);
+  modifier_->setForcePower(power);
+  config_->forcePower = power;
+  config_->save(preferences);
   
   Serial.printf("Force power set to: %.1f W\n", power);
   
   request->send(200, "application/json", "{\"success\":true,\"power\":" + String(power) + "}");
 }
 
+void WebInterface::handleSetPowerSetpoint(AsyncWebServerRequest* request) {
+  if (!request->hasParam("value")) {
+    request->send(400, "application/json", "{\"error\":\"Missing value parameter\"}");
+    return;
+  }
+  
+  float setpoint = request->getParam("value")->value().toFloat();
+  
+  if (setpoint < -20000 || setpoint > 20000) {
+    request->send(400, "application/json", "{\"error\":\"Invalid setpoint value (-20000 to 20000 W)\"}");
+    return;
+  }
+  
+  modifier_->setPowerSetpoint(setpoint);
+  config_->powerSetpoint = setpoint;
+  config_->save(preferences);
+  
+  Serial.printf("Power setpoint set to: %.1f W\n", setpoint);
+  
+  request->send(200, "application/json", "{\"success\":true,\"setpoint\":" + String(setpoint) + "}");
+}
+
 void WebInterface::handleGetConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
-  doc["mode"] = _modifier->getMode();
-  doc["modeString"] = _modifier->getModeString();
-  doc["batteryPhase"] = _modifier->getBatteryPhase();
-  doc["modifyPhase"] = _modifier->getModifyPhase();
-  doc["forcePower"] = _modifier->getForcePower();
+  doc["mode"] = modifier_->getMode();
+  doc["modeString"] = modifier_->getModeString();
+  doc["batteryPhase"] = modifier_->getBatteryPhase();
+  doc["modifyPhase"] = modifier_->getModifyPhase();
+  doc["forcePower"] = modifier_->getForcePower();
+  doc["powerSetpoint"] = modifier_->getPowerSetpoint();
   
   String response;
   serializeJson(doc, response);
@@ -368,11 +395,11 @@ void WebInterface::handleGetConfig(AsyncWebServerRequest* request) {
 void WebInterface::handleGetMqttConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
-  doc["server"] = _config->mqttServer;
-  doc["port"] = _config->mqttPort;
-  doc["user"] = _config->mqttUser;
+  doc["server"] = config_->mqttServer;
+  doc["port"] = config_->mqttPort;
+  doc["user"] = config_->mqttUser;
   // Don't send password for security
-  doc["hasPassword"] = !_config->mqttPassword.isEmpty();
+  doc["hasPassword"] = !config_->mqttPassword.isEmpty();
   
   String response;
   serializeJson(doc, response);
@@ -385,31 +412,31 @@ void WebInterface::handleSetMqttConfig(AsyncWebServerRequest* request) {
     return;
   }
   
-  _config->mqttServer = request->getParam("server", true)->value();
-  _config->mqttPort = request->hasParam("port", true) ? 
+  config_->mqttServer = request->getParam("server", true)->value();
+  config_->mqttPort = request->hasParam("port", true) ? 
                       request->getParam("port", true)->value().toInt() : 1883;
   
   if (request->hasParam("user", true)) {
-    _config->mqttUser = request->getParam("user", true)->value();
+    config_->mqttUser = request->getParam("user", true)->value();
   }
   
   if (request->hasParam("password", true)) {
     String pwd = request->getParam("password", true)->value();
     if (!pwd.isEmpty()) {
-      _config->mqttPassword = pwd;
+      config_->mqttPassword = pwd;
     }
   }
   
   // Save to NVS
-  _config->save(preferences);
+  config_->save(preferences);
   
   // Trigger MQTT reconnection via callback in main.cpp
   extern void reconnectMqtt();
   reconnectMqtt();
 
   Serial.println("MQTT configuration updated:");
-  Serial.printf("  Server: %s:%d\n", _config->mqttServer.c_str(), _config->mqttPort);
-  Serial.printf("  User: %s\n", _config->mqttUser.c_str());
+  Serial.printf("  Server: %s:%d\n", config_->mqttServer.c_str(), config_->mqttPort);
+  Serial.printf("  User: %s\n", config_->mqttUser.c_str());
   
   request->send(200, "application/json", 
                 "{\"success\":true,\"message\":\"MQTT config saved. Device will reconnect.\"}");
@@ -418,10 +445,10 @@ void WebInterface::handleSetMqttConfig(AsyncWebServerRequest* request) {
 void WebInterface::handleGetAdvancedConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
-  doc["useTxReq"] = _config->useTxReq;
-  doc["webUsername"] = _config->webUsername;
+  doc["useTxReq"] = config_->useTxReq;
+  doc["webUsername"] = config_->webUsername;
   // Don't send password for security
-  doc["hasPassword"] = !_config->webPassword.isEmpty();
+  doc["hasPassword"] = !config_->webPassword.isEmpty();
   
   String response;
   serializeJson(doc, response);
@@ -431,26 +458,26 @@ void WebInterface::handleGetAdvancedConfig(AsyncWebServerRequest* request) {
 void WebInterface::handleSetAdvancedConfig(AsyncWebServerRequest* request) {
   if (request->hasParam("useTxReq", true)) {
     String value = request->getParam("useTxReq", true)->value();
-    _config->useTxReq = (value == "true" || value == "1");
+    config_->useTxReq = (value == "true" || value == "1");
   }
   
   if (request->hasParam("webUsername", true)) {
-    _config->webUsername = request->getParam("webUsername", true)->value();
+    config_->webUsername = request->getParam("webUsername", true)->value();
   }
   
   if (request->hasParam("webPassword", true)) {
     String pwd = request->getParam("webPassword", true)->value();
     if (!pwd.isEmpty()) {
-      _config->webPassword = pwd;
+      config_->webPassword = pwd;
     }
   }
   
   // Save to NVS
-  _config->save(preferences);
+  config_->save(preferences);
   
   Serial.println("Advanced configuration updated");
-  Serial.printf("  Use TXREQ: %s\n", _config->useTxReq ? "Yes" : "No");
-  Serial.printf("  Web Username: %s\n", _config->webUsername.c_str());
+  Serial.printf("  Use TXREQ: %s\n", config_->useTxReq ? "Yes" : "No");
+  Serial.printf("  Web Username: %s\n", config_->webUsername.c_str());
   
   request->send(200, "application/json", 
                 "{\"success\":true,\"message\":\"Advanced settings saved.\"}");
@@ -473,10 +500,10 @@ void WebInterface::handleReboot(AsyncWebServerRequest* request) {
 void WebInterface::handleGetEvaConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
-  doc["enabled"] = _config->evaEnabled;
-  doc["serialNumber"] = _config->evaSerialNumber;
-  doc["appId"] = _config->evaAppId;
-  doc["hasSecret"] = !_config->evaAppSecret.isEmpty();
+  doc["enabled"] = config_->evaEnabled;
+  doc["serialNumber"] = config_->evaSerialNumber;
+  doc["appId"] = config_->evaAppId;
+  doc["hasSecret"] = !config_->evaAppSecret.isEmpty();
   
   String response;
   serializeJson(doc, response);
@@ -486,75 +513,138 @@ void WebInterface::handleGetEvaConfig(AsyncWebServerRequest* request) {
 void WebInterface::handleSetEvaConfig(AsyncWebServerRequest* request) {
   if (request->hasParam("enabled", true)) {
     String value = request->getParam("enabled", true)->value();
-    _config->evaEnabled = (value == "true" || value == "1");
+    config_->evaEnabled = (value == "true" || value == "1");
   }
   
   if (request->hasParam("serialNumber", true)) {
-    _config->evaSerialNumber = request->getParam("serialNumber", true)->value();
+    config_->evaSerialNumber = request->getParam("serialNumber", true)->value();
   }
   
   if (request->hasParam("appId", true)) {
-    _config->evaAppId = request->getParam("appId", true)->value();
+    config_->evaAppId = request->getParam("appId", true)->value();
   }
   
   if (request->hasParam("appSecret", true)) {
     String secret = request->getParam("appSecret", true)->value();
     if (!secret.isEmpty()) {
-      _config->evaAppSecret = secret;
+      config_->evaAppSecret = secret;
     }
   }
   
   // Save to NVS
-  _config->save(preferences);
+  config_->save(preferences);
   
   Serial.println("AlphaESS configuration updated");
-  Serial.printf("  Enabled: %s\n", _config->evaEnabled ? "Yes" : "No");
-  Serial.printf("  Serial Number: %s\n", _config->evaSerialNumber.c_str());
+  Serial.printf("  Enabled: %s\n", config_->evaEnabled ? "Yes" : "No");
+  Serial.printf("  Serial Number: %s\n", config_->evaSerialNumber.c_str());
   
   request->send(200, "application/json", 
                 "{\"success\":true,\"message\":\"AlphaESS settings saved.\"}");
 }
 
-void WebInterface::handleGetSelfUseConfig(AsyncWebServerRequest* request) {
+void WebInterface::handleGetOptimizeConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
-  doc["threshold"] = _config->selfUseLimitThreshold;
-  doc["smoothingFactor"] = _config->selfUseSmoothingFactor;
-  doc["currentMode"] = _modifier->getMode();
-  doc["modeString"] = _modifier->getModeString();
+  doc["deliverySetpoint"] = config_->optimizeDeliverySetpoint;
+  doc["minEvaActivity"] = config_->optimizeMinEvaActivity;
+  doc["minSolarPower"] = config_->optimizeMinSolarPower;
+  doc["solarThreshold"] = config_->optimizeSolarThreshold;
+  doc["highSolarSetpoint"] = config_->optimizeHighSolarSetpoint;
+  doc["minDeliveryForAdjust"] = config_->optimizeMinDeliveryForAdjust;
+  doc["adjustDivisor"] = config_->optimizeAdjustDivisor;
+  doc["toleranceLow"] = config_->optimizeToleranceLow;
+  doc["toleranceHigh"] = config_->optimizeToleranceHigh;
+  doc["largeErrorThreshold"] = config_->optimizeLargeErrorThreshold;
+  doc["integratorReduction"] = config_->optimizeIntegratorReduction;
+  doc["hysteresisDelivery"] = config_->optimizeHysteresisDelivery;
+  doc["hysteresisAdjustment"] = config_->optimizeHysteresisAdjustment;
+  doc["integratorMin"] = config_->optimizeIntegratorMin;
+  doc["integratorMax"] = config_->optimizeIntegratorMax;
+  doc["integratorStep"] = config_->optimizeIntegratorStep;
+  doc["errorDeadband"] = config_->optimizeErrorDeadband;
   
   String response;
   serializeJson(doc, response);
   request->send(200, "application/json", response);
 }
 
-void WebInterface::handleSetSelfUseConfig(AsyncWebServerRequest* request) {
+void WebInterface::handleSetOptimizeConfig(AsyncWebServerRequest* request) {
   bool updated = false;
   
-  if (request->hasParam("threshold", true)) {
-    float threshold = request->getParam("threshold", true)->value().toFloat();
-    if (threshold >= 0 && threshold <= 1000) {
-      _config->selfUseLimitThreshold = threshold;
-      _modifier->setSelfUseLimitThreshold(threshold);
-      updated = true;
-      Serial.printf("Self-use limit threshold set to: %.1f W\n", threshold);
-    }
+  if (request->hasParam("deliverySetpoint", true)) {
+    config_->optimizeDeliverySetpoint = request->getParam("deliverySetpoint", true)->value().toFloat();
+    updated = true;
   }
-  
-  if (request->hasParam("smoothingFactor", true)) {
-    float factor = request->getParam("smoothingFactor", true)->value().toFloat();
-    if (factor >= 0.1f && factor <= 1.0f) {
-      _config->selfUseSmoothingFactor = factor;
-      _modifier->setSelfUseLimitSmoothing(factor);
-      updated = true;
-      Serial.printf("Self-use smoothing factor set to: %.2f\n", factor);
-    }
+  if (request->hasParam("minEvaActivity", true)) {
+    config_->optimizeMinEvaActivity = request->getParam("minEvaActivity", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("minSolarPower", true)) {
+    config_->optimizeMinSolarPower = request->getParam("minSolarPower", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("solarThreshold", true)) {
+    config_->optimizeSolarThreshold = request->getParam("solarThreshold", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("highSolarSetpoint", true)) {
+    config_->optimizeHighSolarSetpoint = request->getParam("highSolarSetpoint", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("minDeliveryForAdjust", true)) {
+    config_->optimizeMinDeliveryForAdjust = request->getParam("minDeliveryForAdjust", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("adjustDivisor", true)) {
+    config_->optimizeAdjustDivisor = request->getParam("adjustDivisor", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("toleranceLow", true)) {
+    config_->optimizeToleranceLow = request->getParam("toleranceLow", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("toleranceHigh", true)) {
+    config_->optimizeToleranceHigh = request->getParam("toleranceHigh", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("largeErrorThreshold", true)) {
+    config_->optimizeLargeErrorThreshold = request->getParam("largeErrorThreshold", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("integratorReduction", true)) {
+    config_->optimizeIntegratorReduction = request->getParam("integratorReduction", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("hysteresisDelivery", true)) {
+    config_->optimizeHysteresisDelivery = request->getParam("hysteresisDelivery", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("hysteresisAdjustment", true)) {
+    config_->optimizeHysteresisAdjustment = request->getParam("hysteresisAdjustment", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("integratorMin", true)) {
+    config_->optimizeIntegratorMin = request->getParam("integratorMin", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("integratorMax", true)) {
+    config_->optimizeIntegratorMax = request->getParam("integratorMax", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("integratorStep", true)) {
+    config_->optimizeIntegratorStep = request->getParam("integratorStep", true)->value().toFloat();
+    updated = true;
+  }
+  if (request->hasParam("errorDeadband", true)) {
+    config_->optimizeErrorDeadband = request->getParam("errorDeadband", true)->value().toFloat();
+    updated = true;
   }
   
   if (updated) {
-    _config->save(preferences);
+    config_->save(preferences);
+    Serial.println("Optimize mode settings saved");
     request->send(200, "application/json", 
-                  "{\"success\":true,\"message\":\"Self-use limiter settings saved.\"}");
+                  "{\"success\":true,\"message\":\"Optimize settings saved.\"}");
   } else {
     request->send(400, "application/json", 
                   "{\"error\":\"No valid parameters provided\"}");
@@ -585,29 +675,31 @@ String WebInterface::getStatusJSON() {
   doc["mqtt"]["connected"] = getMqttConnected();
   
   // P1 parser status
-  doc["p1"]["valid"] = _parser->isValid();
-  doc["p1"]["connected"] = _parser->isValid(); // Alias for connection status
-  doc["p1"]["totalPower"] = _parser->getTotalActivePower();
-  doc["p1"]["dsmrVersion"] = _parser->getDsmrVersion();
-  doc["p1"]["interval"] = _modifier->getTelegramInterval();
+  doc["p1"]["valid"] = parser_->isValid();
+  doc["p1"]["connected"] = parser_->isValid(); // Alias for connection status
+  doc["p1"]["totalPower"] = parser_->getTotalActivePower();
+  doc["p1"]["dsmrVersion"] = parser_->getDsmrVersion();
+  doc["p1"]["interval"] = modifier_->getTelegramInterval();
   
   // Modifier status
-  doc["modifier"]["mode"] = _modifier->getMode();
-  doc["modifier"]["modeString"] = _modifier->getModeString();
-  doc["modifier"]["batteryPhase"] = _modifier->getBatteryPhase();
-  doc["modifier"]["modifyPhase"] = _modifier->getModifyPhase();
-  doc["modifier"]["forcePower"] = _modifier->getForcePower();
+  doc["modifier"]["mode"] = modifier_->getMode();
+  doc["modifier"]["modeString"] = modifier_->getModeString();
+  doc["modifier"]["batteryPhase"] = modifier_->getBatteryPhase();
+  doc["modifier"]["modifyPhase"] = modifier_->getModifyPhase();
+  doc["modifier"]["forcePower"] = modifier_->getForcePower();
+  doc["modifier"]["powerSetpoint"] = modifier_->getPowerSetpoint();
   
   // Battery data from AlphaESS
-  doc["battery"]["soc"] = _config->batterySOC;
-  doc["battery"]["power"] = _config->batteryPower;
-  doc["battery"]["gridPower"] = _config->gridPower;
+  doc["battery"]["soc"] = config_->batterySOC;
+  doc["battery"]["power"] = config_->batteryPower;
+  doc["battery"]["gridPower"] = config_->gridPower;
+  doc["battery"]["solarPower"] = config_->actualSolarPower;
   
   // Modified power values (for display)
-  doc["modifier"]["modifiedPowerL1"] = _config->modifiedPowerL1;
-  doc["modifier"]["modifiedPowerL2"] = _config->modifiedPowerL2;
-  doc["modifier"]["modifiedPowerL3"] = _config->modifiedPowerL3;
-  doc["modifier"]["totalModifiedPower"] = _config->totalModifiedPower;
+  doc["modifier"]["modifiedPowerL1"] = config_->modifiedPowerL1;
+  doc["modifier"]["modifiedPowerL2"] = config_->modifiedPowerL2;
+  doc["modifier"]["modifiedPowerL3"] = config_->modifiedPowerL3;
+  doc["modifier"]["totalModifiedPower"] = config_->totalModifiedPower;
   
   String response;
   serializeJson(doc, response);
@@ -641,7 +733,7 @@ void WebInterface::handleSetExternalControl(AsyncWebServerRequest* request) {
   }
   
   // Set external control power and update timestamp
-  _modifier->setExternalControlPower(power);
+  modifier_->setExternalControlPower(power);
   
   Serial.printf("[WEB] External control power set to: %.1f W\n", power);
   
@@ -649,8 +741,8 @@ void WebInterface::handleSetExternalControl(AsyncWebServerRequest* request) {
   JsonDocument doc;
   doc["success"] = true;
   doc["externalPower"] = power;
-  doc["mode"] = _modifier->getMode();
-  doc["modeString"] = _modifier->getModeString();
+  doc["mode"] = modifier_->getMode();
+  doc["modeString"] = modifier_->getModeString();
   doc["timeoutSeconds"] = 60;
   doc["info"] = "External control value received. Will auto-relay after 60 seconds if no new value received.";
   

@@ -171,13 +171,14 @@ String getSettingsPage() {
                 <label>Operation Mode <span style="color: #667eea; font-size: 0.85em;">(MQTT: operation_mode)</span></label>
                 <select id="modeSelect">
                     <option value="0">Unmodified Forward</option>
-                    <option value="1">Off</option>
+                    <option value="1">Battery Off</option>
                     <option value="2">Force Charge</option>
                     <option value="3">Force Discharge</option>
-                    <option value="4">Charge Only</option>
-                    <option value="5">Discharge Only</option>
-                    <option value="6">External Control</option>
-                    <option value="7">Self-Use Limiter</option>
+                    <option value="4">Power Control</option>
+                    <option value="5">Charge Only</option>
+                    <option value="6">Discharge Only</option>
+                    <option value="7">External Control</option>
+                    <option value="8">Optimize</option>
                 </select>
                 <button onclick="setMode()">Set Mode</button>
             </div>
@@ -210,31 +211,127 @@ String getSettingsPage() {
         </div>
 
         <div class="card">
-            <h2>🌱 Self-Use Limiter Mode</h2>
-            <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">Limit self-consumption by delivering extra power to the grid when battery/solar is active. Uses exponential smoothing to prevent oscillations from P1 meter updates and battery cloud lag.</p>
+            <h2>🌱 Optimize Mode Settings</h2>
+            <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">Configure the Domoticz-based PI control algorithm for smart battery management. Adjusts grid delivery based on solar production and battery activity.</p>
 
+            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Target Setpoints</h3>
+            
             <div class="control-group">
-                <label>Export Threshold (Watts) <span style="color: #667eea; font-size: 0.85em;">Default: 20W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Extra power to show as grid delivery when battery is active</small>
-                <input type="number" id="selfUseThreshold" min="0" max="1000" step="1" value="20">
+                <label>Delivery Setpoint (W) <span style="color: #667eea; font-size: 0.85em;">Default: 20W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Target grid delivery power in watts</small>
+                <input type="number" id="optDelSetpt" min="0" max="500" step="1" value="20">
             </div>
 
             <div class="control-group">
-                <label>Smoothing Factor <span style="color: #667eea; font-size: 0.85em;">Default: 0.3</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">0.1 (max smoothing) to 1.0 (no smoothing). Lower = slower response, prevents oscillation.</small>
-                <input type="range" id="selfUseSmoothingSlider" min="0.1" max="1.0" step="0.05" value="0.3" oninput="updateSmoothingDisplay(this.value)">
-                <div style="margin-top: 8px; display: flex; justify-content: space-between;">
-                    <span id="smoothingDisplay" style="font-weight: bold; color: #667eea;">0.30</span>
-                    <span style="font-size: 0.85em; color: #999;">← More Smoothing | Less Smoothing →</span>
-                </div>
+                <label>High Solar Setpoint (W) <span style="color: #667eea; font-size: 0.85em;">Default: 100W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Setpoint when solar exceeds threshold</small>
+                <input type="number" id="optHiSolSet" min="0" max="500" step="1" value="100">
+            </div>
+
+            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Thresholds</h3>
+            
+            <div class="control-group">
+                <label>Min EVA Activity (W) <span style="color: #667eea; font-size: 0.85em;">Default: 10W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Minimum charge/discharge power to consider battery active</small>
+                <input type="number" id="optMinEva" min="0" max="100" step="1" value="10">
+            </div>
+
+            <div class="control-group">
+                <label>Min Solar Power (W) <span style="color: #667eea; font-size: 0.85em;">Default: 20W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Minimum solar power threshold</small>
+                <input type="number" id="optMinSolar" min="0" max="100" step="1" value="20">
+            </div>
+
+            <div class="control-group">
+                <label>Solar Threshold (W) <span style="color: #667eea; font-size: 0.85em;">Default: 300W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">High solar power threshold for setpoint switching</small>
+                <input type="number" id="optSolarThr" min="100" max="1000" step="10" value="300">
+            </div>
+
+            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Control Parameters</h3>
+            
+            <div class="control-group">
+                <label>Min Delivery for Adjust (W) <span style="color: #667eea; font-size: 0.85em;">Default: 60W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Minimum delivery for full adjustment (below uses divisor)</small>
+                <input type="number" id="optMinDelAdj" min="0" max="200" step="5" value="60">
+            </div>
+
+            <div class="control-group">
+                <label>Adjust Divisor <span style="color: #667eea; font-size: 0.85em;">Default: 3.0</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Divisor for slow adjustment when below min delivery</small>
+                <input type="number" id="optAdjDiv" min="1" max="10" step="0.5" value="3.0">
+            </div>
+
+            <div class="control-group">
+                <label>Tolerance Low (W) <span style="color: #667eea; font-size: 0.85em;">Default: -5W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Lower tolerance band (negative value)</small>
+                <input type="number" id="optTolLow" min="-50" max="0" step="1" value="-5">
+            </div>
+
+            <div class="control-group">
+                <label>Tolerance High (W) <span style="color: #667eea; font-size: 0.85em;">Default: 15W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Upper tolerance band</small>
+                <input type="number" id="optTolHigh" min="0" max="100" step="1" value="15">
+            </div>
+
+            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Integrator Settings</h3>
+            
+            <div class="control-group">
+                <label>Large Error Threshold (W) <span style="color: #667eea; font-size: 0.85em;">Default: 200W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Error threshold for integrator reduction</small>
+                <input type="number" id="optLrgErrThr" min="50" max="500" step="10" value="200">
+            </div>
+
+            <div class="control-group">
+                <label>Integrator Reduction <span style="color: #667eea; font-size: 0.85em;">Default: 0.66</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Factor to reduce integrator on large error (0-1)</small>
+                <input type="number" id="optIntRed" min="0.1" max="1.0" step="0.01" value="0.66">
+            </div>
+
+            <div class="control-group">
+                <label>Integrator Min <span style="color: #667eea; font-size: 0.85em;">Default: -10</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Minimum integrator clamp value</small>
+                <input type="number" id="optIntMin" min="-50" max="0" step="1" value="-10">
+            </div>
+
+            <div class="control-group">
+                <label>Integrator Max <span style="color: #667eea; font-size: 0.85em;">Default: 10</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Maximum integrator clamp value</small>
+                <input type="number" id="optIntMax" min="0" max="50" step="1" value="10">
+            </div>
+
+            <div class="control-group">
+                <label>Integrator Step <span style="color: #667eea; font-size: 0.85em;">Default: 1.0</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Increment/decrement step per minute</small>
+                <input type="number" id="optIntStep" min="0.1" max="5.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Error Deadband (W) <span style="color: #667eea; font-size: 0.85em;">Default: 5W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Error deadband for integrator update</small>
+                <input type="number" id="optErrDead" min="0" max="50" step="1" value="5">
+            </div>
+
+            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Hysteresis</h3>
+            
+            <div class="control-group">
+                <label>Hysteresis Delivery (W) <span style="color: #667eea; font-size: 0.85em;">Default: 40W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Delivery threshold for hysteresis activation</small>
+                <input type="number" id="optHysDel" min="0" max="100" step="1" value="40">
+            </div>
+
+            <div class="control-group">
+                <label>Hysteresis Adjustment (W) <span style="color: #667eea; font-size: 0.85em;">Default: -50W</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Adjustment value for hysteresis</small>
+                <input type="number" id="optHysAdj" min="-200" max="0" step="5" value="-50">
             </div>
 
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-                <button onclick="saveSelfUseConfig()">Save Self-Use Limiter Settings</button>
-                <button style="background: #f0f0f0; color: #444;" onclick="resetSelfUseDefaults()">Reset to Defaults</button>
+                <button onclick="saveOptimizeConfig()">Save Optimize Settings</button>
+                <button style="background: #f0f0f0; color: #444;" onclick="resetOptimizeDefaults()">Reset to Defaults</button>
             </div>
 
-            <div id="selfUseConfigStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
+            <div id="optimizeConfigStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
         </div>
 
         <div class="card">
@@ -321,6 +418,7 @@ String getSettingsPage() {
             </div>
 
             <button onclick="saveAdvancedSettings()">Save Advanced Settings</button>
+            <button onclick="rebootDevice()" style="background: #dc3545; margin-left: 10px;">Reboot Device</button>
 
             <div id="advancedStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
         </div>
@@ -370,15 +468,29 @@ String getSettingsPage() {
             }
         }
 
-        async function loadSelfUseConfig() {
+        async function loadOptimizeConfig() {
             try {
-                const response = await fetch('/api/selfuse');
+                const response = await fetch('/api/optimize');
                 const data = await response.json();
-                document.getElementById('selfUseThreshold').value = data.threshold || 20;
-                document.getElementById('selfUseSmoothingSlider').value = data.smoothingFactor || 0.3;
-                updateSmoothingDisplay(data.smoothingFactor || 0.3);
+                document.getElementById('optDelSetpt').value = data.deliverySetpoint || 20;
+                document.getElementById('optMinEva').value = data.minEvaActivity || 10;
+                document.getElementById('optMinSolar').value = data.minSolarPower || 20;
+                document.getElementById('optSolarThr').value = data.solarThreshold || 300;
+                document.getElementById('optHiSolSet').value = data.highSolarSetpoint || 100;
+                document.getElementById('optMinDelAdj').value = data.minDeliveryForAdjust || 60;
+                document.getElementById('optAdjDiv').value = data.adjustDivisor || 3.0;
+                document.getElementById('optTolLow').value = data.toleranceLow || -5;
+                document.getElementById('optTolHigh').value = data.toleranceHigh || 15;
+                document.getElementById('optLrgErrThr').value = data.largeErrorThreshold || 200;
+                document.getElementById('optIntRed').value = data.integratorReduction || 0.66;
+                document.getElementById('optHysDel').value = data.hysteresisDelivery || 40;
+                document.getElementById('optHysAdj').value = data.hysteresisAdjustment || -50;
+                document.getElementById('optIntMin').value = data.integratorMin || -10;
+                document.getElementById('optIntMax').value = data.integratorMax || 10;
+                document.getElementById('optIntStep').value = data.integratorStep || 1.0;
+                document.getElementById('optErrDead').value = data.errorDeadband || 5;
             } catch (error) {
-                console.error('Error fetching self-use config:', error);
+                console.error('Error fetching optimize config:', error);
             }
         }
 
@@ -405,7 +517,6 @@ String getSettingsPage() {
                 const response = await fetch('/api/mode?value=' + mode);
                 const data = await response.json();
                 if (data.success) {
-                    alert('Mode updated successfully!');
                     loadConfig();
                 }
             } catch (error) {
@@ -419,11 +530,10 @@ String getSettingsPage() {
                 const response = await fetch('/api/power?value=' + power);
                 const data = await response.json();
                 if (data.success) {
-                    alert('Force power updated successfully!');
                     loadConfig();
                 }
             } catch (error) {
-                alert('Error setting power: ' + error);
+                console.error('Error setting power:', error);
             }
         }
 
@@ -436,7 +546,7 @@ String getSettingsPage() {
                     updatePhaseButtons();
                 }
             } catch (error) {
-                alert('Error setting battery phase: ' + error);
+                console.error('Error setting battery phase:', error);
             }
         }
 
@@ -449,42 +559,70 @@ String getSettingsPage() {
                     updatePhaseButtons();
                 }
             } catch (error) {
-                alert('Error setting modify phase: ' + error);
+                console.error('Error setting modify phase:', error);
             }
         }
 
-        function updateSmoothingDisplay(value) {
-            document.getElementById('smoothingDisplay').textContent = parseFloat(value).toFixed(2);
-        }
-
-        async function saveSelfUseConfig() {
-            const threshold = document.getElementById('selfUseThreshold').value;
-            const smoothingFactor = document.getElementById('selfUseSmoothingSlider').value;
-
+        async function saveOptimizeConfig() {
             const formData = new FormData();
-            formData.append('threshold', threshold);
-            formData.append('smoothingFactor', smoothingFactor);
+            formData.append('deliverySetpoint', document.getElementById('optDelSetpt').value);
+            formData.append('minEvaActivity', document.getElementById('optMinEva').value);
+            formData.append('minSolarPower', document.getElementById('optMinSolar').value);
+            formData.append('solarThreshold', document.getElementById('optSolarThr').value);
+            formData.append('highSolarSetpoint', document.getElementById('optHiSolSet').value);
+            formData.append('minDeliveryForAdjust', document.getElementById('optMinDelAdj').value);
+            formData.append('adjustDivisor', document.getElementById('optAdjDiv').value);
+            formData.append('toleranceLow', document.getElementById('optTolLow').value);
+            formData.append('toleranceHigh', document.getElementById('optTolHigh').value);
+            formData.append('largeErrorThreshold', document.getElementById('optLrgErrThr').value);
+            formData.append('integratorReduction', document.getElementById('optIntRed').value);
+            formData.append('hysteresisDelivery', document.getElementById('optHysDel').value);
+            formData.append('hysteresisAdjustment', document.getElementById('optHysAdj').value);
+            formData.append('integratorMin', document.getElementById('optIntMin').value);
+            formData.append('integratorMax', document.getElementById('optIntMax').value);
+            formData.append('integratorStep', document.getElementById('optIntStep').value);
+            formData.append('errorDeadband', document.getElementById('optErrDead').value);
 
             try {
-                const response = await fetch('/api/selfuse', {
+                const response = await fetch('/api/optimize', {
                     method: 'POST',
                     body: formData
                 });
                 const data = await response.json();
 
                 if (data.success) {
-                    showSelfUseConfigStatus(data.message || 'Settings saved successfully!', true);
+                    showOptimizeConfigStatus(data.message || 'Optimize settings saved successfully!', true);
                     loadConfig();
                 } else {
-                    showSelfUseConfigStatus('Error: ' + (data.error || 'Unknown error'), false);
+                    showOptimizeConfigStatus('Error: ' + (data.error || 'Unknown error'), false);
                 }
             } catch (error) {
-                showSelfUseConfigStatus('Error saving self-use config: ' + error, false);
+                showOptimizeConfigStatus('Error saving optimize config: ' + error, false);
             }
         }
 
-        function showSelfUseConfigStatus(message, success) {
-            const statusDiv = document.getElementById('selfUseConfigStatus');
+        async function resetOptimizeDefaults() {
+            document.getElementById('optDelSetpt').value = 20;
+            document.getElementById('optMinEva').value = 10;
+            document.getElementById('optMinSolar').value = 20;
+            document.getElementById('optSolarThr').value = 300;
+            document.getElementById('optHiSolSet').value = 100;
+            document.getElementById('optMinDelAdj').value = 60;
+            document.getElementById('optAdjDiv').value = 3.0;
+            document.getElementById('optTolLow').value = -5;
+            document.getElementById('optTolHigh').value = 15;
+            document.getElementById('optLrgErrThr').value = 200;
+            document.getElementById('optIntRed').value = 0.66;
+            document.getElementById('optHysDel').value = 40;
+            document.getElementById('optHysAdj').value = -50;
+            document.getElementById('optIntMin').value = -10;
+            document.getElementById('optIntMax').value = 10;
+            document.getElementById('optIntStep').value = 1.0;
+            document.getElementById('optErrDead').value = 5;
+        }
+
+        function showOptimizeConfigStatus(message, success) {
+            const statusDiv = document.getElementById('optimizeConfigStatus');
             statusDiv.textContent = message;
             statusDiv.style.display = 'block';
             statusDiv.style.background = success ? '#d4edda' : '#f8d7da';
@@ -656,7 +794,7 @@ String getSettingsPage() {
         loadConfig();
         loadMqttConfig();
         loadAdvancedConfig();
-        loadSelfUseConfig();
+        loadOptimizeConfig();
         loadEvaConfig();
     </script>
 </body>

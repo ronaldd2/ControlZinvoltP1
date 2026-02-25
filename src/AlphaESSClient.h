@@ -18,21 +18,26 @@ public:
   void begin();
   void loop();
   bool fetchBatteryData(const String& p1Timestamp);
+  void requestFetch(const String& p1Timestamp);  // Non-blocking request
   
-  bool isDataValid() const { return _dataValid; }
-  float getSOC() const { return _soc; }
-  float getBatteryPower() const { return _batteryPower; }
-  float getGridPower() const { return _gridPower; }
+  bool isDataValid() const { return data_valid_; }
+  float getSOC() const { return soc_; }
+  float getBatteryPower() const { return battery_power_; }
+  float getGridPower() const { return grid_power_; }
   
 private:
-  Config* _config;
-  WiFiClientSecure _client;
+  Config* config_;
+  WiFiClientSecure client_;
   
-  bool _dataValid;
-  float _soc;
-  float _batteryPower;
-  float _gridPower;
-  unsigned long _lastFetch;
+  bool data_valid_;
+  float soc_;
+  float battery_power_;
+  float grid_power_;
+  unsigned long last_fetch_;
+  
+  // Non-blocking request state
+  bool fetch_requested_;
+  String requested_timestamp_;
   
   String calculateSign(const String& timestamp);
   unsigned long parseP1Timestamp(const String& p1Timestamp);

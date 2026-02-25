@@ -27,43 +27,43 @@
 #define OBIS_POWER_RECEIVED_L3 "1-0:62.7.0"
 
 P1Parser::P1Parser() {
-  _valid = false;
-  _activePowerL1 = 0;
-  _activePowerL2 = 0;
-  _activePowerL3 = 0;
-  _activePowerDeliveredL1 = 0;
-  _activePowerDeliveredL2 = 0;
-  _activePowerDeliveredL3 = 0;
-  _totalEnergyImport = 0;
-  _totalEnergyExport = 0;
-  _currentL1 = 0;
-  _currentL2 = 0;
-  _currentL3 = 0;
-  _voltageL1 = 0;
-  _voltageL2 = 0;
-  _voltageL3 = 0;
+  valid_ = false;
+  active_power_l1_ = 0;
+  active_power_l2_ = 0;
+  active_power_l3_ = 0;
+  active_power_delivered_l1_ = 0;
+  active_power_delivered_l2_ = 0;
+  active_power_delivered_l3_ = 0;
+  total_energy_import_ = 0;
+  total_energy_export_ = 0;
+  current_l1_ = 0;
+  current_l2_ = 0;
+  current_l3_ = 0;
+  voltage_l1_ = 0;
+  voltage_l2_ = 0;
+  voltage_l3_ = 0;
 }
 
 bool P1Parser::parse(const String& telegram) {
-  _rawTelegram = telegram;
-  _valid = false;
-  _dsmrVersion = "";
+  raw_telegram_ = telegram;
+  valid_ = false;
+  dsmr_version_ = "";
   
   // Check if telegram starts with '/' and ends with '!'
-  if (!telegram.startsWith("/") || (telegram.charAt(telegram.length()-5) != '!')) {
+  if (!telegram.startsWith("/") || (telegram.charAt(telegram.length()-7) != '!')) {
     Serial.println("Invalid P1 telegram format");
     return false;
   }
   
   // Extract values using OBIS codes
-  _timestamp = extractObisValue(telegram, OBIS_TIMESTAMP);
+  timestamp_ = extractObisValue(telegram, OBIS_TIMESTAMP);
   
   // Extract DSMR version from OBIS code 1-3:0.2.8 (e.g., "42" -> "4.2")
   String versionStr = extractObisValue(telegram, OBIS_DSMR_VERSION);
   if (versionStr.length() >= 2) {
-    _dsmrVersion = String(versionStr.charAt(0)) + "." + versionStr.substring(1);
+    dsmr_version_ = String(versionStr.charAt(0)) + "." + versionStr.substring(1);
   } else if (versionStr.length() > 0) {
-    _dsmrVersion = versionStr;
+    dsmr_version_ = versionStr;
   }
   
   // Energy totals
@@ -72,35 +72,35 @@ bool P1Parser::parse(const String& telegram) {
   String energyExport1 = extractObisValue(telegram, OBIS_ENERGY_EXPORT_TARIFF1);
   String energyExport2 = extractObisValue(telegram, OBIS_ENERGY_EXPORT_TARIFF2);
   
-  _totalEnergyImport = energyImport1.toFloat() + energyImport2.toFloat();
-  _totalEnergyExport = energyExport1.toFloat() + energyExport2.toFloat();
+  total_energy_import_ = energyImport1.toFloat() + energyImport2.toFloat();
+  total_energy_export_ = energyExport1.toFloat() + energyExport2.toFloat();
   
   // Voltages
-  _voltageL1 = extractObisValue(telegram, OBIS_VOLTAGE_L1).toFloat();
-  _voltageL2 = extractObisValue(telegram, OBIS_VOLTAGE_L2).toFloat();
-  _voltageL3 = extractObisValue(telegram, OBIS_VOLTAGE_L3).toFloat();
+  voltage_l1_ = extractObisValue(telegram, OBIS_VOLTAGE_L1).toFloat();
+  voltage_l2_ = extractObisValue(telegram, OBIS_VOLTAGE_L2).toFloat();
+  voltage_l3_ = extractObisValue(telegram, OBIS_VOLTAGE_L3).toFloat();
   
   // Currents
-  _currentL1 = extractObisValue(telegram, OBIS_CURRENT_L1).toFloat();
-  _currentL2 = extractObisValue(telegram, OBIS_CURRENT_L2).toFloat();
-  _currentL3 = extractObisValue(telegram, OBIS_CURRENT_L3).toFloat();
+  current_l1_ = extractObisValue(telegram, OBIS_CURRENT_L1).toFloat();
+  current_l2_ = extractObisValue(telegram, OBIS_CURRENT_L2).toFloat();
+  current_l3_ = extractObisValue(telegram, OBIS_CURRENT_L3).toFloat();
   
   // Active power per phase (consumption - positive)
-  _activePowerL1 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L1).toFloat();
-  _activePowerL2 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L2).toFloat();
-  _activePowerL3 = extractObisValue(telegram, OBIS_POWER_DELIVERED_L3).toFloat();
+  active_power_l1_ = extractObisValue(telegram, OBIS_POWER_DELIVERED_L1).toFloat();
+  active_power_l2_ = extractObisValue(telegram, OBIS_POWER_DELIVERED_L2).toFloat();
+  active_power_l3_ = extractObisValue(telegram, OBIS_POWER_DELIVERED_L3).toFloat();
   
   // Power delivered back (generation - negative for consumption calculation)
-  _activePowerDeliveredL1 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L1).toFloat();
-  _activePowerDeliveredL2 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L2).toFloat();
-  _activePowerDeliveredL3 = extractObisValue(telegram, OBIS_POWER_RECEIVED_L3).toFloat();
+  active_power_delivered_l1_ = extractObisValue(telegram, OBIS_POWER_RECEIVED_L1).toFloat();
+  active_power_delivered_l2_ = extractObisValue(telegram, OBIS_POWER_RECEIVED_L2).toFloat();
+  active_power_delivered_l3_ = extractObisValue(telegram, OBIS_POWER_RECEIVED_L3).toFloat();
   
   // Calculate net power (positive = consuming, negative = generating)
-  _activePowerL1 -= _activePowerDeliveredL1;
-  _activePowerL2 -= _activePowerDeliveredL2;
-  _activePowerL3 -= _activePowerDeliveredL3;
+  active_power_l1_ -= active_power_delivered_l1_;
+  active_power_l2_ -= active_power_delivered_l2_;
+  active_power_l3_ -= active_power_delivered_l3_;
   
-  _valid = true;
+  valid_ = true;
   return true;
 }
 
@@ -186,7 +186,7 @@ bool P1Parser::validateCRC(const String& telegram) {
   }
   
   // Extract CRC from telegram (should be 4 chars after '!')
-  if (telegram.length() < exclamationPos + 5) {
+  if (telegram.length() < exclamationPos + 7) {
     return false;  // Not enough characters for CRC
   }
   
@@ -205,5 +205,5 @@ bool P1Parser::validateCRC(const String& telegram) {
 }
 
 String P1Parser::getDsmrVersion() const {
-  return _dsmrVersion.length() > 0 ? _dsmrVersion : "Unknown";
+  return dsmr_version_.length() > 0 ? dsmr_version_ : "Unknown";
 }

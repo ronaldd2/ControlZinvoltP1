@@ -72,7 +72,7 @@ void readP1Task(void* parameter) {
         if (crcCharsRead) {  
           crcCharsRead++;
           
-          if (crcCharsRead == 5) {
+          if (crcCharsRead == 5+2) {
             logPrintln("[READ] Telegram end with CRC detected");
             telegramCount++;
             logPrint("[READ] Processing telegram #");
@@ -82,14 +82,37 @@ void readP1Task(void* parameter) {
             logPrintln(" bytes)");
             
             digitalWrite(LED_PIN, HIGH);
+            
+            // Validate CRC first before any processing
+            bool crcValid = false;
+            try {
+              crcValid = P1Parser::validateCRC(buffer);
+            } catch (...) {
+              logPrintln("[READ] CRC validation error");
+              crcValid = false;
+            }
+            
+            if (!crcValid) {
+              logPrintln("[READ] WARNING: CRC validation failed! Skipping telegram.");
+              buffer = "";
+              inTelegram = false;
+              crcCharsRead = 0;
+              digitalWrite(LED_PIN, LOW);
+              continue;
+            }
+            
+            logPrintln("[READ] CRC validation passed!");
+            
+            // Parse telegram after CRC validation
             p1Parser.parse(buffer);
+            p1Parser.setValid(true);
 
-            String ts = p1Parser.getTimestamp();
+            String ts = p1Parser.getTimestamp(); // 260131130132W
             String dateKey = "";
             if (ts.length() >= 10 && ts.charAt(4) == '-' && ts.charAt(7) == '-') {
               dateKey = ts.substring(0, 10);
-            } else if (ts.length() >= 8) {
-              dateKey = ts.substring(0, 8);
+            } else if (ts.length() >= 6) {
+              dateKey = ts.substring(0, 6);
             }
 
             if (dateKey.length() > 0 && dateKey != config.dayStartDate) {
@@ -106,35 +129,15 @@ void readP1Task(void* parameter) {
               logPrintln(" kWh)");
             }
             
+            // Broadcast only valid telegrams
             broadcastP1Data(buffer);
             
-            try {
-              bool crcValid = P1Parser::validateCRC(buffer);
-              p1Parser.setValid(crcValid);
-              if (crcValid) {
-                logPrintln("[READ] CRC validation passed!");
-                
-                if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
-                  String p1Timestamp = p1Parser.getTimestamp();
-                  if (alphaESS.fetchBatteryData(p1Timestamp)) {
-                    logPrint("[READ] AlphaESS: SOC=");
-                    logPrint(String(alphaESS.getSOC(), 1));
-                    logPrint("%, BattPower=");
-                    logPrint(String(alphaESS.getBatteryPower()));
-                    logPrint("W, GridPower=");
-                    logPrint(String(alphaESS.getGridPower()));
-                    logPrintln("W");
-                  }
-                }
-                
-                homeAssistant.requestPublish();
-              } else {
-                logPrintln("[READ] WARNING: CRC validation failed!");
-              }
-            } catch (...) {
-              logPrintln("[READ] CRC validation error");
-              p1Parser.setValid(false);
+            // Request AlphaESS fetch (non-blocking, will be processed in main loop)
+            if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
+              alphaESS.requestFetch(ts);
             }
+            
+            homeAssistant.requestPublish();
             
             String modifiedTelegram = p1Modifier.modify(buffer, p1Parser, config.gridPower);
             

@@ -143,6 +143,9 @@ void setup() {
   // Setup WiFi
   setupWiFi();
   
+  // Link config to P1Modifier for optimize mode
+  p1Modifier.setConfig(&config);
+  
   // Setup OTA updates
   setupOTA();
   
@@ -189,6 +192,7 @@ void setup() {
   p1Modifier.setBatteryPhase(config.batteryPhase);
   p1Modifier.setModifyPhase(config.modifyPhase);
   p1Modifier.setForcePower(config.forcePower);
+  p1Modifier.setPowerSetpoint(config.powerSetpoint);
   p1Modifier.setSelfUseLimitThreshold(config.selfUseLimitThreshold);
   p1Modifier.setSelfUseLimitSmoothing(config.selfUseSmoothingFactor);
 

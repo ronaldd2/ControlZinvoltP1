@@ -10,37 +10,57 @@ extern void logPrint(const String& msg);
 extern void logPrintln(const String& msg);
 
 AlphaESSClient::AlphaESSClient(Config* config) {
-  _config = config;
-  _dataValid = false;
-  _soc = 0.0;
-  _batteryPower = 0.0;
-  _gridPower = 0.0;
-  _lastFetch = 0;
+  config_ = config;
+  data_valid_ = false;
+  soc_ = 0.0;
+  battery_power_ = 0.0;
+  grid_power_ = 0.0;
+  last_fetch_ = 0;
+  fetch_requested_ = false;
+  requested_timestamp_ = "";
 }
 
 void AlphaESSClient::begin() {
-  _client.setInsecure();  // Skip certificate validation (or load CA cert if needed)
+  client_.setInsecure();  // Skip certificate validation (or load CA cert if needed)
   logPrintln("[EVA] AlphaESS client initialized");
 }
 
 void AlphaESSClient::loop() {
-  // Intentionally empty - fetching is triggered by P1 telegram reception
+  // Process pending fetch requests asynchronously (non-blocking)
+  if (fetch_requested_) {
+    fetch_requested_ = false;
+    if (fetchBatteryData(requested_timestamp_)) {
+      logPrint("[EVA] SOC=");
+      logPrint(String(soc_, 1));
+      logPrint("%, BattPower=");
+      logPrint(String(battery_power_, 0));
+      logPrint("W, GridPower=");
+      logPrint(String(grid_power_, 0));
+      logPrintln("W");
+    }
+  }
+}
+
+void AlphaESSClient::requestFetch(const String& p1Timestamp) {
+  // Queue a fetch request to be processed in loop() on Core 1
+  fetch_requested_ = true;
+  requested_timestamp_ = p1Timestamp;
 }
 
 bool AlphaESSClient::fetchBatteryData(const String& p1Timestamp) {
-  if (!_config->evaEnabled) {
+  if (!config_->evaEnabled) {
     return false;
   }
   
   unsigned long now = millis();
-  if (now - _lastFetch < 10000) {
+  if (now - last_fetch_ < (10000-200)) {
     return false;  // Throttle to once per 10 seconds
   }
-  _lastFetch = now;
+  last_fetch_ = now;
   
-  if (_config->evaSerialNumber.isEmpty() || _config->evaAppId.isEmpty() || _config->evaAppSecret.isEmpty()) {
+  if (config_->evaSerialNumber.isEmpty() || config_->evaAppId.isEmpty() || config_->evaAppSecret.isEmpty()) {
     logPrintln("[EVA] Missing configuration");
-    _dataValid = false;
+    data_valid_ = false;
     return false;
   }
   
@@ -53,49 +73,49 @@ bool AlphaESSClient::fetchBatteryData(const String& p1Timestamp) {
   String timestamp = String(epochTime);
   
   JsonDocument doc;
-  String endpoint = "/api/getLastPowerData?sysSn=" + _config->evaSerialNumber;
+  String endpoint = "/api/getLastPowerData?sysSn=" + config_->evaSerialNumber;
   
   if (makeAPIRequest(endpoint, timestamp, doc)) {
     if (doc["code"] == 200 && doc["data"].is<JsonObject>()) {
       JsonObject data = doc["data"];
       
-      _soc = data["soc"] | 0.0f;
+      soc_ = data["soc"] | 0.0f;
       float pbat = data["pbat"] | 0.0f;
       float prealL1 = data["prealL1"] | 0.0f;
       
       // pbat: negative = charging, positive = discharging
-      _batteryPower = pbat;
-      _gridPower = prealL1;
+      battery_power_ = pbat;
+      grid_power_ = prealL1;
       
       // Update config with latest values
-      _config->batterySOC = _soc;
-      _config->batteryPower = _batteryPower;
-      _config->gridPower = _gridPower;
+      config_->batterySOC = soc_;
+      config_->batteryPower = battery_power_;
+      config_->gridPower = grid_power_;
       
-      _dataValid = true;
+      data_valid_ = true;
       
       logPrint("[EVA] Battery SOC: ");
-      logPrint(String(_soc, 1));
+      logPrint(String(soc_, 1));
       logPrint("%, Power: ");
-      logPrint(String(_batteryPower, 0));
+      logPrint(String(battery_power_, 0));
       logPrint("W, Grid: ");
-      logPrint(String(_gridPower, 0));
+      logPrint(String(grid_power_, 0));
       logPrintln("W");
     } else {
       logPrint("[EVA] API error: ");
       logPrintln(doc["msg"] | "Unknown error");
-      _dataValid = false;
+      data_valid_ = false;
     }
   } else {
-    _dataValid = false;
+    data_valid_ = false;
     return false;
   }
   
-  return _dataValid;
+  return data_valid_;
 }
 
 String AlphaESSClient::calculateSign(const String& timestamp) {
-  String input = _config->evaAppId + _config->evaAppSecret + timestamp;
+  String input = config_->evaAppId + config_->evaAppSecret + timestamp;
   
   unsigned char hash[64];
   mbedtls_sha512_context ctx;
@@ -166,7 +186,7 @@ bool AlphaESSClient::makeAPIRequest(const String& endpoint, const String& timest
   logPrint(host);
   logPrintln("...");
   
-  if (!_client.connect(host, httpsPort)) {
+  if (!client_.connect(host, httpsPort)) {
     logPrint("[EVA] Connection to AlphaESS API failed (WiFi: ");
     logPrint(WiFi.status() == WL_CONNECTED ? "OK" : "DOWN");
     logPrintln(")");
@@ -179,20 +199,20 @@ bool AlphaESSClient::makeAPIRequest(const String& endpoint, const String& timest
   // Build HTTP request
   String request = "GET " + endpoint + " HTTP/1.1\r\n";
   request += "Host: " + String(host) + "\r\n";
-  request += "appID: " + _config->evaAppId + "\r\n";
-  request += "appSecret: " + _config->evaAppSecret + "\r\n";
+  request += "appID: " + config_->evaAppId + "\r\n";
+  request += "appSecret: " + config_->evaAppSecret + "\r\n";
   request += "timeStamp: " + timestamp + "\r\n";
   request += "sign: " + sign + "\r\n";
   request += "Connection: close\r\n\r\n";
   
-  _client.print(request);
+  client_.print(request);
   
   // Wait for response
   unsigned long timeout = millis();
-  while (_client.available() == 0) {
+  while (client_.available() == 0) {
     if (millis() - timeout > 5000) {
       logPrintln("[EVA] API request timeout");
-      _client.stop();
+      client_.stop();
       return false;
     }
     delay(10);
@@ -202,8 +222,8 @@ bool AlphaESSClient::makeAPIRequest(const String& endpoint, const String& timest
   
   // Skip HTTP headers
   bool headersEnded = false;
-  while (_client.available()) {
-    String line = _client.readStringUntil('\n');
+  while (client_.available()) {
+    String line = client_.readStringUntil('\n');
     if (line == "\r") {
       headersEnded = true;
       break;
@@ -212,13 +232,13 @@ bool AlphaESSClient::makeAPIRequest(const String& endpoint, const String& timest
   
   if (!headersEnded) {
     logPrintln("[EVA] Failed to parse HTTP headers");
-    _client.stop();
+    client_.stop();
     return false;
   }
   
   // Read JSON body
-  String body = _client.readString();
-  _client.stop();
+  String body = client_.readString();
+  client_.stop();
   
   logPrint("[EVA] JSON body length: ");
   logPrintln(String(body.length()));
