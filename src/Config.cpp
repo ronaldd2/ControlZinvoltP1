@@ -12,6 +12,7 @@ void Config::reset() {
   operationMode = MODE_UNMODIFIED;
   batteryPhase = 1;
   modifyPhase = 1;
+  singlePhaseMeterMode = false;
   forcePower = 2000.0;
   powerSetpoint = 0.0;   // Default 0W (neutral)
   selfUseLimitThreshold = 20.0;   // Default 20W extra export
@@ -42,6 +43,9 @@ void Config::reset() {
   batteryProduction = 0.0;
   batteryConsumption = 0.0;
   actualSolarPower = 0.0;
+  batteryApiSolarPower = 0.0;
+  batteryApiCocPower = 0.0;
+  batteryApiMeterPower = 0.0;
   modifiedPowerL1 = 0.0;
   modifiedPowerL2 = 0.0;
   modifiedPowerL3 = 0.0;
@@ -55,9 +59,13 @@ void Config::reset() {
   mqttUser = "";
   mqttPassword = "";
   evaEnabled = false;
+  batteryBackend = "alphaess";
   evaSerialNumber = "";
   evaAppId = "";
   evaAppSecret = "";
+  zinvoltEmail = "";
+  zinvoltPassword = "";
+  zinvoltBatteryId = "";
   useTxReq = false;  // Default: don't check TXREQ (compatible with most devices)
   webUsername = "admin";
   webPassword = "admin";
@@ -78,6 +86,7 @@ void Config::load(Preferences& prefs) {
   operationMode = (OperationMode)prefs.getInt("opMode", MODE_UNMODIFIED);
   batteryPhase = prefs.getInt("battPhase", 1);
   modifyPhase = prefs.getInt("modPhase", 1);
+  singlePhaseMeterMode = prefs.getBool("singlePhase", false);
   forcePower = prefs.getFloat("forcePower", 3000.0);
   powerSetpoint = prefs.getFloat("powerSetpoint", 0.0);
   selfUseLimitThreshold = prefs.getFloat("selfUseThresh", 20.0);
@@ -107,9 +116,17 @@ void Config::load(Preferences& prefs) {
   mqttUser = prefs.getString("mqttUser", "");
   mqttPassword = prefs.getString("mqttPass", "");
   evaEnabled = prefs.getBool("evaEnabled", false);
+  batteryBackend = prefs.getString("batBackend", "alphaess");
+  batteryBackend.toLowerCase();
+  if (batteryBackend != "alphaess" && batteryBackend != "zinvolt") {
+    batteryBackend = "alphaess";
+  }
   evaSerialNumber = prefs.getString("evaSN", "");
   evaAppId = prefs.getString("evaAppId", "");
   evaAppSecret = prefs.getString("evaSecret", "");
+  zinvoltEmail = prefs.getString("zinEmail", "");
+  zinvoltPassword = prefs.getString("zinPass", "");
+  zinvoltBatteryId = prefs.getString("zinBattId", "");
   useTxReq = prefs.getBool("useTxReq", false);
   webUsername = prefs.getString("webUser", "admin");
   webPassword = prefs.getString("webPass", "admin");
@@ -120,6 +137,9 @@ void Config::load(Preferences& prefs) {
   batteryCapacity = 0.0f;
   batteryProduction = 0.0f;
   batteryConsumption = 0.0f;
+  batteryApiSolarPower = 0.0f;
+  batteryApiCocPower = 0.0f;
+  batteryApiMeterPower = 0.0f;
   lastEnergyImport = 0.0f;
   lastEnergyExport = 0.0f;
   modifiedPowerL1 = 0.0f;
@@ -142,6 +162,7 @@ void Config::load(Preferences& prefs) {
   Serial.printf("  Mode: %d\n", operationMode);
   Serial.printf("  Battery Phase: %d\n", batteryPhase);
   Serial.printf("  Modify Phase: %d\n", modifyPhase);
+  Serial.printf("  Single Phase Meter Mode: %s\n", singlePhaseMeterMode ? "Yes" : "No");
   Serial.printf("  Force Power: %.1f W\n", forcePower);
   Serial.printf("  MQTT Server: %s:%d\n", mqttServer.c_str(), mqttPort);
   Serial.printf("  Use TXREQ: %s\n", useTxReq ? "Yes" : "No");
@@ -158,6 +179,7 @@ void Config::save(Preferences& prefs) {
   prefs.putInt("opMode", operationMode);
   prefs.putInt("battPhase", batteryPhase);
   prefs.putInt("modPhase", modifyPhase);
+  prefs.putBool("singlePhase", singlePhaseMeterMode);
   prefs.putFloat("forcePower", forcePower);
   prefs.putFloat("powerSetpoint", powerSetpoint);
   
@@ -192,9 +214,13 @@ void Config::save(Preferences& prefs) {
   
   // AlphaESS EVA Battery API Configuration
   prefs.putBool("evaEnabled", evaEnabled);
+  prefs.putString("batBackend", batteryBackend);
   prefs.putString("evaSN", evaSerialNumber);
   prefs.putString("evaAppId", evaAppId);
   prefs.putString("evaSecret", evaAppSecret);
+  prefs.putString("zinEmail", zinvoltEmail);
+  prefs.putString("zinPass", zinvoltPassword);
+  prefs.putString("zinBattId", zinvoltBatteryId);
   
   // Hardware Configuration
   prefs.putBool("useTxReq", useTxReq);

@@ -3,7 +3,7 @@
  */
 
 #include "P1Tasks.h"
-#include "AlphaESSClient.h"
+#include "BatteryApiSelector.h"
 #include "HomeAssistant.h"
 #include <Preferences.h>
 
@@ -14,7 +14,7 @@
 
 // External references from main.cpp
 extern Preferences preferences;
-extern AlphaESSClient alphaESS;
+extern BatteryApiSelector batteryApi;
 extern HomeAssistant homeAssistant;
 
 void acceptTCPClients();
@@ -132,9 +132,9 @@ void readP1Task(void* parameter) {
             // Broadcast only valid telegrams
             broadcastP1Data(buffer);
             
-            // Request AlphaESS fetch (non-blocking, will be processed in main loop)
-            if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
-              alphaESS.requestFetch(ts);
+            // Request battery API fetch (non-blocking, will be processed in main loop)
+            if (config.evaEnabled) {
+              batteryApi.requestFetch(ts);
             }
             
             homeAssistant.requestPublish();

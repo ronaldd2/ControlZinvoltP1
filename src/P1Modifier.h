@@ -52,6 +52,9 @@ public:
   
   void setModifyPhase(int phase) { modify_phase_ = phase; }
   int getModifyPhase() const { return modify_phase_; }
+
+  void setSinglePhaseMeterMode(bool enabled) { single_phase_meter_mode_ = enabled; }
+  bool getSinglePhaseMeterMode() const { return single_phase_meter_mode_; }
   
   // Force power settings (in Watts)
   void setForcePower(float watts) { force_power_ = watts; }
@@ -78,6 +81,7 @@ private:
   OperationMode current_mode_;
   int battery_phase_;      // Phase where battery is connected (1, 2, or 3)
   int modify_phase_;       // Phase to modify power on (1, 2, or 3)
+  bool single_phase_meter_mode_;  // If enabled, force L2/L3 to zero and map total to L1
   float force_power_;      // Power value for force modes (Watts)
   float power_setpoint_;   // Power setpoint for MODE_POWER_CONTROL (Watts, + or -)
   float external_control_power_;  // Power value from external REST API (Watts)

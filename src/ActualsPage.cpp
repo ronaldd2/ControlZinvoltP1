@@ -158,6 +158,7 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Total Power</div>
                     <div class="metric-value" id="totalPower">0<span class="metric-unit">W</span></div>
+                    <div id="totalApiMeterDiv" style="font-size: 0.85em; color: #666; margin-top: 4px; display: none;"></div>
                     <div id="totalModifiedDiv" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="totalModifiedPower">0</strong> W
                     </div>
@@ -223,27 +224,30 @@ String getActualsPage() {
         </div>
 
         <div class="card">
-            <h2>🔋 Battery Status (AlphaESS)</h2>
+            <h2>🔋 Battery Status</h2>
             <div class="grid">
                 <div class="metric">
                     <div class="metric-label">Battery SOC</div>
                     <div class="metric-value" id="batterySOC">-<span class="metric-unit">%</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Grid Power</div>
+                    <div class="metric-label">Battery Power</div>
                     <div class="metric-value" id="gridPower">-<span class="metric-unit">W</span></div>
+                    <div id="gridPowerApi" style="display: none; font-size: 0.78em; color: #666; margin-top: 4px;"></div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Battery Power</div>
                     <div class="metric-value" style="font-size: 1.0em;" id="batteryPower">-<span class="metric-unit">W</span></div>
+                    <div id="batteryPowerApi" style="display: none; font-size: 0.78em; color: #666; margin-top: 4px;"></div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Solar Power</div>
                     <div class="metric-value" id="solarPower">-<span class="metric-unit">W</span></div>
+                    <div id="solarPowerApi" style="display: none; font-size: 0.78em; color: #666; margin-top: 4px;"></div>
                 </div>
             </div>
             <div id="evaDisabled" style="display: none; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px; color: #666; font-size: 0.9em;">
-                AlphaESS integration is disabled. Enable it in <a href="/settings" style="color: #667eea;">Settings</a>.
+                Battery API integration is disabled. Enable it in <a href="/settings" style="color: #667eea;">Settings</a>.
             </div>
         </div>
 
@@ -327,6 +331,7 @@ String getActualsPage() {
         
         async function fetchData() {
             try {
+                let actualP1TotalW = null;
                 const p1Response = await fetch('/api/p1data');
                 const p1Data = await p1Response.json();
 
@@ -338,6 +343,7 @@ String getActualsPage() {
                     const voltage = p1Data.voltage || {};
 
                     const originalTotal = Math.round((power.total || 0) * 1000);
+                    actualP1TotalW = originalTotal;
                     const originalL1 = Math.round((power.l1 || 0) * 1000);
                     const originalL2 = Math.round((power.l2 || 0) * 1000);
                     const originalL3 = Math.round((power.l3 || 0) * 1000);
@@ -425,13 +431,34 @@ String getActualsPage() {
 
                 // Update battery data
                 if (statusData.battery) {
+                    document.getElementById('evaDisabled').style.display = statusData.battery.enabled ? 'none' : 'block';
                     document.getElementById('batterySOC').innerHTML = (statusData.battery.soc || 0) + '<span class="metric-unit">%</span>';
                     const batteryPower = statusData.battery.power || 0;
                     const gridPower = statusData.battery.gridPower || 0;
                     const solarPower = statusData.battery.solarPower || 0;
+                    const apiSolarPower = statusData.battery.apiSolarPower || 0;
+                    const apiCocPower = statusData.battery.apiCocPower || 0;
+                    const apiMeterPower = statusData.battery.apiMeterPower || 0;
                     const powerSign = batteryPower > 10 ? '⚡ Discharging' : batteryPower < -10 ? '🔋 Charging' : '🔌 Standby' ;
 
+                    const totalApiMeterEl = document.getElementById('totalApiMeterDiv');
+                    if (Math.abs(apiMeterPower) > 0.01) {
+                        totalApiMeterEl.style.display = 'block';
+                        totalApiMeterEl.textContent = 'API meter: ' + Math.round(apiMeterPower) + ' W';
+                    } else {
+                        totalApiMeterEl.style.display = 'none';
+                        totalApiMeterEl.textContent = '';
+                    }
+
                     document.getElementById('solarPower').innerHTML = solarPower + '<span class="metric-unit">W</span>';
+                    const apiSolarEl = document.getElementById('solarPowerApi');
+                    if (Math.abs(apiSolarPower) > 0.01) {
+                        apiSolarEl.style.display = 'block';
+                        apiSolarEl.textContent = 'API: ' + apiSolarPower + ' W';
+                    } else {
+                        apiSolarEl.style.display = 'none';
+                        apiSolarEl.textContent = '';
+                    }
 
 
                     let efficiencyText = '';
@@ -446,10 +473,32 @@ String getActualsPage() {
                     }
                     document.getElementById('gridPower').innerHTML = gridPower + '<span class="metric-unit">W</span>'+ powerSign;
                     document.getElementById('batteryPower').innerHTML = Math.abs(batteryPower) + '<span class="metric-unit">W</span> '  + efficiencyText;
+
+                    const cocEl = document.getElementById('batteryPowerApi');
+                    if (Math.abs(apiCocPower) > 0.0001) {
+                        cocEl.style.display = 'block';
+                        cocEl.textContent = 'API CoC: ' + apiCocPower.toFixed(3) + ' kW';
+                    } else {
+                        cocEl.style.display = 'none';
+                        cocEl.textContent = '';
+                    }
+
+                    const meterEl = document.getElementById('gridPowerApi');
+                    meterEl.style.display = 'none';
+                    meterEl.textContent = '';
                 } else {
+                    document.getElementById('evaDisabled').style.display = 'block';
                     document.getElementById('batterySOC').innerHTML = '-<span class="metric-unit">%</span>';
                     document.getElementById('batteryPower').innerHTML = '-<span class="metric-unit">W</span>';
                     document.getElementById('gridPower').innerHTML = '-<span class="metric-unit">W</span>';
+                    document.getElementById('totalApiMeterDiv').style.display = 'none';
+                    document.getElementById('totalApiMeterDiv').textContent = '';
+                    document.getElementById('solarPowerApi').style.display = 'none';
+                    document.getElementById('solarPowerApi').textContent = '';
+                    document.getElementById('batteryPowerApi').style.display = 'none';
+                    document.getElementById('batteryPowerApi').textContent = '';
+                    document.getElementById('gridPowerApi').style.display = 'none';
+                    document.getElementById('gridPowerApi').textContent = '';
                 }
             } catch (error) {
                 console.error('Error fetching data:', error);

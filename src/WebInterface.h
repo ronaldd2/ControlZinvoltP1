@@ -37,6 +37,7 @@ private:
   void handleGetStatus(AsyncWebServerRequest* request);
   void handleSetMode(AsyncWebServerRequest* request);
   void handleSetPhase(AsyncWebServerRequest* request);
+  void handleSetSinglePhaseMode(AsyncWebServerRequest* request);
   void handleSetPower(AsyncWebServerRequest* request);
   void handleSetPowerSetpoint(AsyncWebServerRequest* request);
   void handleGetConfig(AsyncWebServerRequest* request);

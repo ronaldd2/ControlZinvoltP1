@@ -17,6 +17,7 @@ public:
   OperationMode operationMode;
   int batteryPhase;
   int modifyPhase;
+  bool singlePhaseMeterMode;
   float forcePower;
   float powerSetpoint;  // Power setpoint for MODE_POWER_CONTROL (Watts)
   
@@ -53,6 +54,9 @@ public:
   
   // Solar power (from MQTT input)
   float actualSolarPower;
+  float batteryApiSolarPower;  // Solar power reported by battery backend API (display only)
+  float batteryApiCocPower;    // Battery CoC power from Zinvolt currentPower.coc (kW)
+  float batteryApiMeterPower;  // Meter power from Zinvolt currentPower.meterPower[].power (W)
   
   // Modified telegram power values (for display)
   float modifiedPowerL1;
@@ -74,9 +78,13 @@ public:
   
   // AlphaESS EVA Battery API Configuration
   bool evaEnabled;
+  String batteryBackend;  // "alphaess" or "zinvolt"
   String evaSerialNumber;
   String evaAppId;
   String evaAppSecret;
+  String zinvoltEmail;
+  String zinvoltPassword;
+  String zinvoltBatteryId;
   
   // Hardware Configuration
   bool useTxReq;  // Enable TXREQ pin check before sending

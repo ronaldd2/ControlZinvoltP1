@@ -208,6 +208,15 @@ String getSettingsPage() {
                     <button class="phase-btn" id="modPhase3" onclick="setModifyPhase(3)">L3</button>
                 </div>
             </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="singlePhaseMode" style="width: auto;">
+                    <span>Transform meter to single phase (L2/L3 = 0)</span>
+                </label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Keeps total power correct by mapping all power to L1 in modified telegrams.</small>
+                <button onclick="setSinglePhaseMode()">Apply Single-Phase Setting</button>
+            </div>
         </div>
 
         <div class="card">
@@ -363,32 +372,59 @@ String getSettingsPage() {
         </div>
 
         <div class="card">
-            <h2>🔋 AlphaESS Battery Integration</h2>
-            <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">Connect to AlphaESS cloud API to fetch real-time battery data (SOC, power). Data is fetched every 10 seconds and published to MQTT.</p>
+            <h2>🔋 Battery API Integration</h2>
+            <p style="color: #666; font-size: 0.9em; margin-bottom: 20px;">Choose your cloud backend (Zinvolt or AlphaESS) to fetch battery data every 10 seconds.</p>
 
             <div class="control-group">
                 <label style="display: flex; align-items: center; gap: 10px;">
                     <input type="checkbox" id="evaEnabled" style="width: auto;">
-                    <span>Enable AlphaESS Integration</span>
+                    <span>Enable Battery API Integration</span>
                 </label>
             </div>
 
             <div class="control-group">
-                <label>Serial Number (sysSn)</label>
-                <input type="text" id="evaSerialNumber" placeholder="ALG0011243456789">
+                <label>Backend</label>
+                <select id="batteryBackend" onchange="updateBatteryBackendFields()">
+                    <option value="zinvolt">Zinvolt</option>
+                    <option value="alphaess">AlphaESS</option>
+                </select>
             </div>
 
-            <div class="control-group">
-                <label>App ID</label>
-                <input type="text" id="evaAppId" placeholder="Your AlphaESS App ID">
+            <div id="zinvoltFields" style="display: none;">
+                <div class="control-group">
+                    <label>Zinvolt Email</label>
+                    <input type="text" id="zinvoltEmail" placeholder="you@example.com">
+                </div>
+
+                <div class="control-group">
+                    <label>Zinvolt Password</label>
+                    <input type="password" id="zinvoltPassword" placeholder="Leave empty to keep current">
+                </div>
+
+                <div class="control-group">
+                    <label>Zinvolt Battery ID (optional)</label>
+                    <input type="text" id="zinvoltBatteryId" placeholder="Auto-detect first battery if empty">
+                </div>
             </div>
 
-            <div class="control-group">
-                <label>App Secret</label>
-                <input type="password" id="evaAppSecret" placeholder="Your AlphaESS App Secret">
+            <div id="alphaessFields" style="display: none;">
+                <div class="control-group">
+                    <label>Serial Number (sysSn)</label>
+                    <input type="text" id="evaSerialNumber" placeholder="ALG0011243456789">
+                </div>
+
+                <div class="control-group">
+                    <label>App ID</label>
+                    <input type="text" id="evaAppId" placeholder="Your AlphaESS App ID">
+                </div>
+
+                <div class="control-group">
+                    <label>App Secret</label>
+                    <input type="password" id="evaAppSecret" placeholder="Your AlphaESS App Secret">
+                </div>
             </div>
 
-            <button onclick="saveEvaConfig()">Save AlphaESS Configuration</button>
+            <button onclick="saveEvaConfig()">Save Battery API Configuration</button>
 
             <div id="evaConfigStatus" style="margin-top: 15px; padding: 10px; border-radius: 6px; display: none;"></div>
         </div>
@@ -427,6 +463,7 @@ String getSettingsPage() {
     <script>
         let currentBatteryPhase = 1;
         let currentModifyPhase = 1;
+        let currentSinglePhaseMode = false;
 
         async function loadConfig() {
             try {
@@ -439,6 +476,8 @@ String getSettingsPage() {
 
                 currentBatteryPhase = data.batteryPhase || 1;
                 currentModifyPhase = data.modifyPhase || 1;
+                currentSinglePhaseMode = data.singlePhaseMode || false;
+                document.getElementById('singlePhaseMode').checked = currentSinglePhaseMode;
                 updatePhaseButtons();
             } catch (error) {
                 console.error('Error loading config:', error);
@@ -463,6 +502,10 @@ String getSettingsPage() {
                 const data = await response.json();
                 document.getElementById('useTxReq').checked = data.useTxReq || false;
                 document.getElementById('webUsername').value = data.webUsername || 'admin';
+                if (data.singlePhaseMode != null) {
+                    currentSinglePhaseMode = data.singlePhaseMode;
+                    document.getElementById('singlePhaseMode').checked = currentSinglePhaseMode;
+                }
             } catch (error) {
                 console.error('Error fetching advanced config:', error);
             }
@@ -560,6 +603,19 @@ String getSettingsPage() {
                 }
             } catch (error) {
                 console.error('Error setting modify phase:', error);
+            }
+        }
+
+        async function setSinglePhaseMode() {
+            const enabled = document.getElementById('singlePhaseMode').checked;
+            try {
+                const response = await fetch('/api/singlephase?enabled=' + (enabled ? '1' : '0'));
+                const data = await response.json();
+                if (data.success) {
+                    currentSinglePhaseMode = enabled;
+                }
+            } catch (error) {
+                console.error('Error setting single phase mode:', error);
             }
         }
 
@@ -696,6 +752,7 @@ String getSettingsPage() {
 
         async function saveAdvancedSettings() {
             const useTxReq = document.getElementById('useTxReq').checked;
+            const singlePhaseMode = document.getElementById('singlePhaseMode').checked;
             const webUsername = document.getElementById('webUsername').value;
             const webPassword = document.getElementById('webPassword').value;
 
@@ -706,6 +763,7 @@ String getSettingsPage() {
 
             const formData = new FormData();
             formData.append('useTxReq', useTxReq ? 'true' : 'false');
+            formData.append('singlePhaseMode', singlePhaseMode ? 'true' : 'false');
             formData.append('webUsername', webUsername);
             if (webPassword) formData.append('webPassword', webPassword);
 
@@ -735,13 +793,23 @@ String getSettingsPage() {
             statusDiv.style.color = success ? '#155724' : '#721c24';
         }
 
+        function updateBatteryBackendFields() {
+            const backend = document.getElementById('batteryBackend').value || 'alphaess';
+            document.getElementById('zinvoltFields').style.display = backend === 'zinvolt' ? 'block' : 'none';
+            document.getElementById('alphaessFields').style.display = backend === 'alphaess' ? 'block' : 'none';
+        }
+
         async function loadEvaConfig() {
             try {
                 const response = await fetch('/api/eva');
                 const data = await response.json();
                 document.getElementById('evaEnabled').checked = data.enabled || false;
+                document.getElementById('batteryBackend').value = data.backend || 'alphaess';
                 document.getElementById('evaSerialNumber').value = data.serialNumber || '';
                 document.getElementById('evaAppId').value = data.appId || '';
+                document.getElementById('zinvoltEmail').value = data.zinvoltEmail || '';
+                document.getElementById('zinvoltBatteryId').value = data.zinvoltBatteryId || '';
+                updateBatteryBackendFields();
             } catch (error) {
                 console.error('Error fetching EVA config:', error);
             }
@@ -749,20 +817,34 @@ String getSettingsPage() {
 
         async function saveEvaConfig() {
             const enabled = document.getElementById('evaEnabled').checked;
+            const backend = document.getElementById('batteryBackend').value;
             const serialNumber = document.getElementById('evaSerialNumber').value;
             const appId = document.getElementById('evaAppId').value;
             const appSecret = document.getElementById('evaAppSecret').value;
+            const zinvoltEmail = document.getElementById('zinvoltEmail').value;
+            const zinvoltPassword = document.getElementById('zinvoltPassword').value;
+            const zinvoltBatteryId = document.getElementById('zinvoltBatteryId').value;
 
-            if (enabled && (!serialNumber || !appId)) {
-                showEvaConfigStatus('Please enter Serial Number and App ID', false);
-                return;
+            if (enabled) {
+                if (backend === 'alphaess' && (!serialNumber || !appId)) {
+                    showEvaConfigStatus('Please enter AlphaESS Serial Number and App ID', false);
+                    return;
+                }
+                if (backend === 'zinvolt' && !zinvoltEmail) {
+                    showEvaConfigStatus('Please enter Zinvolt email', false);
+                    return;
+                }
             }
 
             const formData = new FormData();
             formData.append('enabled', enabled ? 'true' : 'false');
+            formData.append('backend', backend);
             formData.append('serialNumber', serialNumber);
             formData.append('appId', appId);
             if (appSecret) formData.append('appSecret', appSecret);
+            formData.append('zinvoltEmail', zinvoltEmail);
+            formData.append('zinvoltBatteryId', zinvoltBatteryId);
+            if (zinvoltPassword) formData.append('zinvoltPassword', zinvoltPassword);
 
             try {
                 const response = await fetch('/api/eva', {
@@ -772,8 +854,9 @@ String getSettingsPage() {
                 const data = await response.json();
 
                 if (data.success) {
-                    showEvaConfigStatus('AlphaESS settings saved!', true);
+                    showEvaConfigStatus('Battery API settings saved!', true);
                     document.getElementById('evaAppSecret').value = '';
+                    document.getElementById('zinvoltPassword').value = '';
                     setTimeout(() => location.reload(), 2000);
                 } else {
                     showEvaConfigStatus('Error: ' + (data.error || 'Unknown error'), false);

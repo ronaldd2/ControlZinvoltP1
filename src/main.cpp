@@ -30,7 +30,7 @@
 #include "WebInterface.h"
 #include "Config.h"
 #include "HomeAssistant.h"
-#include "AlphaESSClient.h"
+#include "BatteryApiSelector.h"
 #include "P1Tasks.h"
 #include "TCPServer.h"
 #include "Version.h"
@@ -65,7 +65,7 @@ P1Modifier p1Modifier;
 Config config;
 WebInterface webInterface(&server, &p1Parser, &p1Modifier, &config);
 HomeAssistant homeAssistant(&p1Parser, &p1Modifier, &config);
-AlphaESSClient alphaESS(&config);
+BatteryApiSelector batteryApi(&config);
 
 // Callback for WebInterface to access HomeAssistant
 void reconnectMqtt() {
@@ -168,14 +168,25 @@ void setup() {
     logPrintln("MQTT not configured - use web interface to set up");
   }
   
-  // Initialize AlphaESS client for battery data
-  if (config.evaEnabled && !config.evaSerialNumber.isEmpty()) {
-    alphaESS.begin();
-    logPrintln("AlphaESS client initialized:");
-    logPrint("  Serial: ");
-    logPrintln(config.evaSerialNumber);
+  // Initialize battery API client for battery data
+  if (config.evaEnabled) {
+    batteryApi.begin();
+    logPrintln("Battery API integration initialized:");
+    logPrint("  Backend: ");
+    logPrintln(batteryApi.getBackendName());
+    if (batteryApi.getBackendName() == "alphaess") {
+      logPrint("  Serial: ");
+      logPrintln(config.evaSerialNumber);
+    } else {
+      logPrint("  Email: ");
+      logPrintln(config.zinvoltEmail);
+      if (!config.zinvoltBatteryId.isEmpty()) {
+        logPrint("  Battery ID: ");
+        logPrintln(config.zinvoltBatteryId);
+      }
+    }
   } else {
-    logPrintln("AlphaESS integration disabled - enable in settings");
+    logPrintln("Battery API integration disabled - enable in settings");
   }
   
   // Setup web server
@@ -191,6 +202,7 @@ void setup() {
   p1Modifier.setMode(config.operationMode);
   p1Modifier.setBatteryPhase(config.batteryPhase);
   p1Modifier.setModifyPhase(config.modifyPhase);
+  p1Modifier.setSinglePhaseMeterMode(config.singlePhaseMeterMode);
   p1Modifier.setForcePower(config.forcePower);
   p1Modifier.setPowerSetpoint(config.powerSetpoint);
   p1Modifier.setSelfUseLimitThreshold(config.selfUseLimitThreshold);
@@ -244,8 +256,8 @@ void loop() {
   // Handle Home Assistant MQTT
   homeAssistant.loop();
   
-  // Handle AlphaESS battery data fetching (periodic)
-  alphaESS.loop();
+  // Handle battery API data fetching (periodic)
+  batteryApi.loop();
   
 
   

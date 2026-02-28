@@ -20,6 +20,7 @@ P1Modifier::P1Modifier() {
   current_mode_ = MODE_UNMODIFIED;
   battery_phase_ = 1;
   modify_phase_ = 1;
+  single_phase_meter_mode_ = false;
   force_power_ = 2000.0;  // Default 2kW
   power_setpoint_ = 0.0;  // Default 0W (neutral)
   external_control_power_ = 0.0;
@@ -63,7 +64,7 @@ String P1Modifier::getModeString() const {
 
 String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser, float batteryPower) {
   // If unmodified mode, return original
-  if (current_mode_ == MODE_UNMODIFIED) {
+  if (current_mode_ == MODE_UNMODIFIED && !single_phase_meter_mode_) {
     return originalTelegram;
   }
   
@@ -395,6 +396,13 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
   // Apply all the change to modify_phase_, keep other phases at original values
   newPowerWatt[modify_phase_] = activePowerWatt[modify_phase_] + deltaNeeded;
   // Other phases already set to original values at start of function
+
+  if (single_phase_meter_mode_) {
+    // Expose telegram as single-phase while keeping total power correct
+    newPowerWatt[1] = targetTotal;
+    newPowerWatt[2] = 0.0f;
+    newPowerWatt[3] = 0.0f;
+  }
 
   // Apply modifications
   for (int phase = 0; phase <=3; phase++) {

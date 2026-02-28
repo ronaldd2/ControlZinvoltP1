@@ -72,6 +72,10 @@ void WebInterface::begin() {
   server_->on("/api/phase", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleSetPhase(request);
   });
+
+  server_->on("/api/singlephase", HTTP_GET, [this](AsyncWebServerRequest* request) {
+    handleSetSinglePhaseMode(request);
+  });
   
   server_->on("/api/power", HTTP_GET, [this](AsyncWebServerRequest* request) {
     handleSetPower(request);
@@ -333,6 +337,30 @@ void WebInterface::handleSetPhase(AsyncWebServerRequest* request) {
   request->send(200, "application/json", response);
 }
 
+void WebInterface::handleSetSinglePhaseMode(AsyncWebServerRequest* request) {
+  if (!request->hasParam("enabled")) {
+    request->send(400, "application/json", "{\"error\":\"Missing enabled parameter\"}");
+    return;
+  }
+
+  String value = request->getParam("enabled")->value();
+  bool enabled = (value == "1" || value == "true" || value == "on");
+
+  modifier_->setSinglePhaseMeterMode(enabled);
+  config_->singlePhaseMeterMode = enabled;
+  config_->save(preferences);
+
+  Serial.printf("Single phase meter mode: %s\n", enabled ? "Enabled" : "Disabled");
+
+  JsonDocument doc;
+  doc["success"] = true;
+  doc["singlePhaseMode"] = enabled;
+
+  String response;
+  serializeJson(doc, response);
+  request->send(200, "application/json", response);
+}
+
 void WebInterface::handleSetPower(AsyncWebServerRequest* request) {
   if (!request->hasParam("value")) {
     request->send(400, "application/json", "{\"error\":\"Missing value parameter\"}");
@@ -384,6 +412,7 @@ void WebInterface::handleGetConfig(AsyncWebServerRequest* request) {
   doc["modeString"] = modifier_->getModeString();
   doc["batteryPhase"] = modifier_->getBatteryPhase();
   doc["modifyPhase"] = modifier_->getModifyPhase();
+  doc["singlePhaseMode"] = modifier_->getSinglePhaseMeterMode();
   doc["forcePower"] = modifier_->getForcePower();
   doc["powerSetpoint"] = modifier_->getPowerSetpoint();
   
@@ -446,6 +475,7 @@ void WebInterface::handleGetAdvancedConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
   doc["useTxReq"] = config_->useTxReq;
+  doc["singlePhaseMode"] = config_->singlePhaseMeterMode;
   doc["webUsername"] = config_->webUsername;
   // Don't send password for security
   doc["hasPassword"] = !config_->webPassword.isEmpty();
@@ -459,6 +489,13 @@ void WebInterface::handleSetAdvancedConfig(AsyncWebServerRequest* request) {
   if (request->hasParam("useTxReq", true)) {
     String value = request->getParam("useTxReq", true)->value();
     config_->useTxReq = (value == "true" || value == "1");
+  }
+
+  if (request->hasParam("singlePhaseMode", true)) {
+    String value = request->getParam("singlePhaseMode", true)->value();
+    bool enabled = (value == "true" || value == "1");
+    config_->singlePhaseMeterMode = enabled;
+    modifier_->setSinglePhaseMeterMode(enabled);
   }
   
   if (request->hasParam("webUsername", true)) {
@@ -501,9 +538,13 @@ void WebInterface::handleGetEvaConfig(AsyncWebServerRequest* request) {
   JsonDocument doc;
   
   doc["enabled"] = config_->evaEnabled;
+  doc["backend"] = config_->batteryBackend;
   doc["serialNumber"] = config_->evaSerialNumber;
   doc["appId"] = config_->evaAppId;
   doc["hasSecret"] = !config_->evaAppSecret.isEmpty();
+  doc["zinvoltEmail"] = config_->zinvoltEmail;
+  doc["zinvoltBatteryId"] = config_->zinvoltBatteryId;
+  doc["hasZinvoltPassword"] = !config_->zinvoltPassword.isEmpty();
   
   String response;
   serializeJson(doc, response);
@@ -514,6 +555,14 @@ void WebInterface::handleSetEvaConfig(AsyncWebServerRequest* request) {
   if (request->hasParam("enabled", true)) {
     String value = request->getParam("enabled", true)->value();
     config_->evaEnabled = (value == "true" || value == "1");
+  }
+
+  if (request->hasParam("backend", true)) {
+    String backend = request->getParam("backend", true)->value();
+    backend.toLowerCase();
+    if (backend == "zinvolt" || backend == "alphaess") {
+      config_->batteryBackend = backend;
+    }
   }
   
   if (request->hasParam("serialNumber", true)) {
@@ -530,16 +579,37 @@ void WebInterface::handleSetEvaConfig(AsyncWebServerRequest* request) {
       config_->evaAppSecret = secret;
     }
   }
+
+  if (request->hasParam("zinvoltEmail", true)) {
+    config_->zinvoltEmail = request->getParam("zinvoltEmail", true)->value();
+  }
+
+  if (request->hasParam("zinvoltBatteryId", true)) {
+    config_->zinvoltBatteryId = request->getParam("zinvoltBatteryId", true)->value();
+  }
+
+  if (request->hasParam("zinvoltPassword", true)) {
+    String password = request->getParam("zinvoltPassword", true)->value();
+    if (!password.isEmpty()) {
+      config_->zinvoltPassword = password;
+    }
+  }
   
   // Save to NVS
   config_->save(preferences);
   
-  Serial.println("AlphaESS configuration updated");
+  Serial.println("Battery API configuration updated");
   Serial.printf("  Enabled: %s\n", config_->evaEnabled ? "Yes" : "No");
-  Serial.printf("  Serial Number: %s\n", config_->evaSerialNumber.c_str());
+  Serial.printf("  Backend: %s\n", config_->batteryBackend.c_str());
+  if (config_->batteryBackend == "alphaess") {
+    Serial.printf("  Serial Number: %s\n", config_->evaSerialNumber.c_str());
+  } else {
+    Serial.printf("  Email: %s\n", config_->zinvoltEmail.c_str());
+    Serial.printf("  Battery ID: %s\n", config_->zinvoltBatteryId.c_str());
+  }
   
   request->send(200, "application/json", 
-                "{\"success\":true,\"message\":\"AlphaESS settings saved.\"}");
+                "{\"success\":true,\"message\":\"Battery API settings saved.\"}");
 }
 
 void WebInterface::handleGetOptimizeConfig(AsyncWebServerRequest* request) {
@@ -686,14 +756,20 @@ String WebInterface::getStatusJSON() {
   doc["modifier"]["modeString"] = modifier_->getModeString();
   doc["modifier"]["batteryPhase"] = modifier_->getBatteryPhase();
   doc["modifier"]["modifyPhase"] = modifier_->getModifyPhase();
+  doc["modifier"]["singlePhaseMode"] = modifier_->getSinglePhaseMeterMode();
   doc["modifier"]["forcePower"] = modifier_->getForcePower();
   doc["modifier"]["powerSetpoint"] = modifier_->getPowerSetpoint();
   
   // Battery data from AlphaESS
+  doc["battery"]["backend"] = config_->batteryBackend;
+  doc["battery"]["enabled"] = config_->evaEnabled;
   doc["battery"]["soc"] = config_->batterySOC;
   doc["battery"]["power"] = config_->batteryPower;
   doc["battery"]["gridPower"] = config_->gridPower;
   doc["battery"]["solarPower"] = config_->actualSolarPower;
+  doc["battery"]["apiSolarPower"] = config_->batteryApiSolarPower;
+  doc["battery"]["apiCocPower"] = config_->batteryApiCocPower;
+  doc["battery"]["apiMeterPower"] = config_->batteryApiMeterPower;
   
   // Modified power values (for display)
   doc["modifier"]["modifiedPowerL1"] = config_->modifiedPowerL1;

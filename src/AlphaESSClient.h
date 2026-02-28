@@ -10,15 +10,17 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include "Config.h"
+#include "BatteryApiClient.h"
 
-class AlphaESSClient {
+class AlphaESSClient : public BatteryApiClient {
 public:
   AlphaESSClient(Config* config);
   
-  void begin();
-  void loop();
+  void begin() override;
+  void loop() override;
   bool fetchBatteryData(const String& p1Timestamp);
-  void requestFetch(const String& p1Timestamp);  // Non-blocking request
+  void requestFetch(const String& p1Timestamp) override;  // Non-blocking request
+  String getBackendName() const override { return "alphaess"; }
   
   bool isDataValid() const { return data_valid_; }
   float getSOC() const { return soc_; }
