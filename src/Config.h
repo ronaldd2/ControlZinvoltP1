@@ -31,6 +31,7 @@ public:
   float optimizeMinSolarPower;           // Min solar power threshold (default 20W)
   float optimizeSolarThreshold;          // High solar power threshold (default 300W)
   float optimizeHighSolarSetpoint;       // Setpoint when solar is high (default 100W)
+  float optimizeFilterTimeConstant;      // First-order filter time constant in seconds (default 45s)
   float optimizeMinDeliveryForAdjust;    // Min delivery for full adjustment (default 60W)
   float optimizeAdjustDivisor;           // Divisor for slow adjustment (default 3.0)
   float optimizeToleranceLow;            // Lower tolerance band (default -5W)

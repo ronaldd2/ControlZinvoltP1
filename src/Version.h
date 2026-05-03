@@ -15,6 +15,6 @@ inline const char* getFirmwareVersion() {
   static char version[32];
   snprintf(version, sizeof(version), "%s %s", BUILD_DATE, BUILD_TIME);
   return version;
-}
+} 
 
 #endif // VERSION_H

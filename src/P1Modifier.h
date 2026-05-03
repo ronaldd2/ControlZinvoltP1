@@ -9,18 +9,17 @@
 
 #include <Arduino.h>
 #include "P1Parser.h"
-#include "DomoticzLogic.h"
 
 enum OperationMode {
-  MODE_UNMODIFIED,        // Forward without modification
-  MODE_BATTERY_OFF,               // Prevent charging/discharging (gradual power reduction)
-  MODE_FORCE_CHARGE,      // Force charging (show high consumption)
-  MODE_FORCE_DISCHARGE,   // Force discharging (show high generation)
-  MODE_POWER_CONTROL,     // Control to specific power setpoint (+ or -)
-  MODE_CHARGE_ONLY,       // Only allow charging (gradual discharge reduction)
-  MODE_DISCHARGE_ONLY,    // Only allow discharging (gradual charge reduction)
-  MODE_EXTERNAL_CONTROL,  // External REST API control
-  MODE_OPTIMIZE   // Limit self-use: prioritize grid export with smoothing
+  MODE_UNMODIFIED=0,        // Forward without modification
+  MODE_BATTERY_OFF=1,               // Prevent charging/discharging (gradual power reduction)
+  MODE_FORCE_CHARGE=2,      // Force charging (show high consumption)
+  MODE_FORCE_DISCHARGE=3,   // Force discharging (show high generation)
+  MODE_POWER_CONTROL=4,     // Control to specific power setpoint (+ or -)
+  MODE_CHARGE_ONLY=5,       // Only allow charging (gradual discharge reduction)
+  MODE_DISCHARGE_ONLY=6,    // Only allow discharging (gradual charge reduction)
+  MODE_EXTERNAL_CONTROL=7,  // External REST API control
+  MODE_OPTIMIZE=8   // Limit self-use: prioritize grid export with smoothing
 };
 
 enum BatteryMode { 
@@ -71,11 +70,20 @@ public:
   bool isExternalControlValid() const { return (millis() - external_control_last_update_) < 60000; }
     // Get detected telegram interval in seconds
   float getTelegramInterval() const { return telegram_interval_sec_; }
-    // Self-use limiter settings
+  // Self-use limiter settings
   void setSelfUseLimitThreshold(float watts) { self_use_limit_threshold_ = watts; }
   float getSelfUseLimitThreshold() const { return self_use_limit_threshold_; }
-  void setSelfUseLimitSmoothing(float factor) { self_use_smoothing_factor_ = constrain(factor, 0.1f, 1.0f); }
-  float getSelfUseLimitSmoothing() const { return self_use_smoothing_factor_; }
+  float getOptimizeSetpoint() const { return optimize_setpoint_; }
+  void calculateOptimizeSetpoint();
+  float getOptimizeTraceActualW() const { return optimize_trace_actual_w_; }
+  float getOptimizeTraceScaledActualW() const { return optimize_trace_scaled_actual_w_; }
+  float getOptimizeTraceErrorW() const { return optimize_trace_error_w_; }
+  float getOptimizeTraceCommandW() const { return optimize_trace_command_w_; }
+  float getOptimizeTraceTargetW() const { return optimize_trace_target_w_; }
+  float getOptimizeTraceFilteredW() const { return optimize_trace_filtered_w_; }
+  float getOptimizeTraceIntegratorW() const { return optimize_trace_integrator_w_; }
+  float getOptimizeTraceAdjustDivisor() const { return optimize_trace_adjust_divisor_; }
+  bool getOptimizeTraceNeutralHold() const { return optimize_neutral_hold_; }
   
 private:
   OperationMode current_mode_;
@@ -86,18 +94,26 @@ private:
   float power_setpoint_;   // Power setpoint for MODE_POWER_CONTROL (Watts, + or -)
   float external_control_power_;  // Power value from external REST API (Watts)
   unsigned long external_control_last_update_;  // Timestamp of last external control update
-  int8_t noise_;        // Noise value for power variation
   float force_integrator_;
-  float power_adjustment_;
   int last_power_watt_;  // Last adjusted power for noise calculation
+  bool anti_repeat_add_positive_; // Toggle for alternating +1/-1 when output repeats
 
-  
-  // Self-use limiter smoothing
+  // Self-use limiter
   float self_use_limit_threshold_;     // Extra power to deliver to grid (default 20W)
-  float self_use_smoothing_factor_;    // Smoothing factor 0.1-1.0 (lower = more smoothing)
-  float last_smoothed_power_;         // Last smoothed power value for hysteresis
-  unsigned long last_smooth_update_time_; // Timestamp of last smoothing update
   float optimize_setpoint_;         // Current optimize setpoint
+  float filtered_delivery_w_;       // Filtered measured grid delivery (W)
+  bool filter_initialized_;         // Whether filter has initial value
+  float optimize_integrator_;       // Slow trim integrator for optimize mode
+  float optimize_last_error_w_;     // Previous optimize error for anti-windup/reversal handling
+  bool optimize_neutral_hold_;      // Hysteresis state for neutral correction hold
+  float optimize_trace_actual_w_;   // Last measured actual grid power (W)
+  float optimize_trace_scaled_actual_w_; // Last scaled actual reading used for control (W)
+  float optimize_trace_error_w_;    // Last control error used by optimize loop (W)
+  float optimize_trace_command_w_;  // Last optimize command offset applied (W)
+  float optimize_trace_target_w_;   // Last target modified power (W)
+  float optimize_trace_filtered_w_; // Last filtered target/commanded power (W)
+  float optimize_trace_integrator_w_; // Last optimize integrator value (W)
+  float optimize_trace_adjust_divisor_; // Last adjust divisor used in optimize loop
   
   // Lag-aware charge/discharge mode tracking
   float previous_battery_power_;      // Previous battery power reading to detect trends
@@ -109,15 +125,12 @@ private:
   // Telegram interval tracking
   unsigned long last_modify_time_;   // Timestamp of last modify() call
   float telegram_interval_sec_;      // Detected telegram interval in seconds
-  
-  // Domoticz logic for optimize mode
-  DomoticzLogic domoticz_logic_;
+
   class Config* config_;  // Pointer to config for accessing solar/battery data
   
   // Helper functions
   String modifyObisValue(const String& telegram, const String& obisCode, float newValue);
   String modifyObisPhase(const String& originalTelegram, uint8_t phase, float newPowerWatt); 
-  String replaceObisValue(const String& telegram, const String& obisCode, const String& newValue);
   String formatPowerValue(float watts);
   String recalculateCRC(const String& telegram);
   float getPowerDirection(float batteryPower);  // Returns trend: negative/positive/zero

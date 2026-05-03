@@ -114,6 +114,12 @@ static const char PAGE_STYLES[] = R"rawliteral(
             background: #f8d7da;
             color: #721c24;
         }
+        .trace-good {
+            color: #155724;
+        }
+        .trace-warn {
+            color: #856404;
+        }
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 1.8em;
@@ -158,7 +164,8 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Total Power</div>
                     <div class="metric-value" id="totalPower">0<span class="metric-unit">W</span></div>
-                    <div id="totalApiMeterDiv" style="font-size: 0.85em; color: #666; margin-top: 4px; display: none;"></div>
+                    <div id="totalApiMeterDiv" style="font-size: 0.85em; color: #666; margin-top: 4px;">API meter: 0 W</div>
+                    <div id="optimizeSetpointDiv" style="font-size: 0.85em; color: #0c5460; margin-top: 4px;">Setpoint: 0 W</div>
                     <div id="totalModifiedDiv" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="totalModifiedPower">0</strong> W
                     </div>
@@ -221,6 +228,24 @@ String getActualsPage() {
                     </div>
                 </details>
             </div>
+
+            <div id="optimizeDebugPanel" style="margin-top: 12px; padding: 12px; background: #f0f0f0; border-radius: 6px; font-size: 0.85em; display: none;">
+                <details>
+                    <summary style="cursor: pointer; font-weight: 500; color: #666;">🧪 Optimize Debug Trace</summary>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;">
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Actual</span><br><strong id="optTraceActual">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Scaled Actual</span><br><strong id="optTraceScaledActual">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Setpoint</span><br><strong id="optTraceSetpoint">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Error</span><br><strong id="optTraceError">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Command</span><br><strong id="optTraceCommand">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Target</span><br><strong id="optTraceTarget">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Filtered</span><br><strong id="optTraceFiltered">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Integrator</span><br><strong id="optTraceIntegrator">-</strong> W</div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Adjust Divisor</span><br><strong id="optTraceAdjustDiv">-</strong></div>
+                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Neutral Hold</span><br><strong id="optTraceHold">-</strong></div>
+                    </div>
+                </details>
+            </div>
         </div>
 
         <div class="card">
@@ -236,7 +261,7 @@ String getActualsPage() {
                     <div id="gridPowerApi" style="display: none; font-size: 0.78em; color: #666; margin-top: 4px;"></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Battery Power</div>
+                    <div class="metric-label">Grid Power</div>
                     <div class="metric-value" style="font-size: 1.0em;" id="batteryPower">-<span class="metric-unit">W</span></div>
                     <div id="batteryPowerApi" style="display: none; font-size: 0.78em; color: #666; margin-top: 4px;"></div>
                 </div>
@@ -398,7 +423,45 @@ String getActualsPage() {
                 const modifier = statusData.modifier || {};
                 const wifi = statusData.wifi || {};
                 const p1 = statusData.p1 || {};
+                const optimizeCfg = statusData.optimizeConfig || {};
                 document.getElementById('currentMode').textContent = modifier.modeString || '—';
+
+                const optimizeSetpointEl = document.getElementById('optimizeSetpointDiv');
+                const optimizeDebugPanel = document.getElementById('optimizeDebugPanel');
+                if (typeof modifier.optimizeSetpoint === 'number') {
+                    optimizeSetpointEl.style.display = 'block';
+                    optimizeSetpointEl.textContent = 'Setpoint: ' + Math.round(modifier.optimizeSetpoint) + ' W';
+
+                    const trace = modifier.optimizeTrace || {};
+                    optimizeDebugPanel.style.display = (modifier.mode === 8) ? 'block' : 'none';
+                    document.getElementById('optTraceActual').textContent = Math.round(trace.actualW || 0);
+                    document.getElementById('optTraceScaledActual').textContent = Math.round(trace.scaledActualW || 0);
+                    document.getElementById('optTraceSetpoint').textContent = Math.round(modifier.optimizeSetpoint || 0);
+                    document.getElementById('optTraceError').textContent = Math.round(trace.errorW || 0);
+                    document.getElementById('optTraceCommand').textContent = Math.round(trace.commandW || 0);
+                    document.getElementById('optTraceTarget').textContent = Math.round(trace.targetW || 0);
+                    document.getElementById('optTraceFiltered').textContent = Math.round(trace.filteredW || 0);
+                    document.getElementById('optTraceIntegrator').textContent = (trace.integratorW || 0).toFixed(2);
+                    document.getElementById('optTraceAdjustDiv').textContent = (trace.adjustDivisor || 1).toFixed(2);
+                    document.getElementById('optTraceHold').textContent = trace.neutralHold ? 'Yes' : 'No';
+
+                    const tolLow = (typeof optimizeCfg.toleranceLow === 'number') ? optimizeCfg.toleranceLow : -5;
+                    const tolHigh = (typeof optimizeCfg.toleranceHigh === 'number') ? optimizeCfg.toleranceHigh : 15;
+                    const errorValue = (typeof trace.errorW === 'number') ? trace.errorW : 0;
+                    const errorInBand = errorValue >= tolLow && errorValue <= tolHigh;
+
+                    const errorEl = document.getElementById('optTraceError');
+                    errorEl.classList.remove('trace-good', 'trace-warn');
+                    errorEl.classList.add(errorInBand ? 'trace-good' : 'trace-warn');
+
+                    const holdEl = document.getElementById('optTraceHold');
+                    holdEl.classList.remove('trace-good', 'trace-warn');
+                    holdEl.classList.add(trace.neutralHold ? 'trace-good' : 'trace-warn');
+                } else {
+                    optimizeSetpointEl.style.display = 'block';
+                    optimizeSetpointEl.textContent = 'Setpoint: 0 W';
+                    optimizeDebugPanel.style.display = 'none';
+                }
                 
                 document.getElementById('uptime').textContent = formatUptime(statusData.uptime || 0);
                 document.getElementById('wifiSSID').textContent = wifi.ssid || '-';
@@ -442,13 +505,8 @@ String getActualsPage() {
                     const powerSign = batteryPower > 10 ? '⚡ Discharging' : batteryPower < -10 ? '🔋 Charging' : '🔌 Standby' ;
 
                     const totalApiMeterEl = document.getElementById('totalApiMeterDiv');
-                    if (Math.abs(apiMeterPower) > 0.01) {
-                        totalApiMeterEl.style.display = 'block';
-                        totalApiMeterEl.textContent = 'API meter: ' + Math.round(apiMeterPower) + ' W';
-                    } else {
-                        totalApiMeterEl.style.display = 'none';
-                        totalApiMeterEl.textContent = '';
-                    }
+                    totalApiMeterEl.style.display = 'block';
+                    totalApiMeterEl.textContent = 'API meter: ' + Math.round(apiMeterPower) + ' W';
 
                     document.getElementById('solarPower').innerHTML = solarPower + '<span class="metric-unit">W</span>';
                     const apiSolarEl = document.getElementById('solarPowerApi');
@@ -477,7 +535,7 @@ String getActualsPage() {
                     const cocEl = document.getElementById('batteryPowerApi');
                     if (Math.abs(apiCocPower) > 0.0001) {
                         cocEl.style.display = 'block';
-                        cocEl.textContent = 'API CoC: ' + apiCocPower.toFixed(3) + ' kW';
+                        cocEl.textContent = 'CoC: ' + apiCocPower.toFixed(3) + ' kWh';
                     } else {
                         cocEl.style.display = 'none';
                         cocEl.textContent = '';
@@ -491,8 +549,8 @@ String getActualsPage() {
                     document.getElementById('batterySOC').innerHTML = '-<span class="metric-unit">%</span>';
                     document.getElementById('batteryPower').innerHTML = '-<span class="metric-unit">W</span>';
                     document.getElementById('gridPower').innerHTML = '-<span class="metric-unit">W</span>';
-                    document.getElementById('totalApiMeterDiv').style.display = 'none';
-                    document.getElementById('totalApiMeterDiv').textContent = '';
+                    document.getElementById('totalApiMeterDiv').style.display = 'block';
+                    document.getElementById('totalApiMeterDiv').textContent = 'API meter: 0 W';
                     document.getElementById('solarPowerApi').style.display = 'none';
                     document.getElementById('solarPowerApi').textContent = '';
                     document.getElementById('batteryPowerApi').style.display = 'none';

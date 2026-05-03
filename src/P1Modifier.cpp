@@ -26,13 +26,24 @@ P1Modifier::P1Modifier() {
   external_control_power_ = 0.0;
   external_control_last_update_ = 0;
   self_use_limit_threshold_ = 20.0;   // Default 20W
-  self_use_smoothing_factor_ = 0.3;   // Default moderate smoothing
-  last_smoothed_power_ = 0.0;
-  last_smooth_update_time_ = 0;
+  optimize_setpoint_ = -20.0f;
+  filtered_delivery_w_ = 0.0f;
+  filter_initialized_ = false;
+  optimize_integrator_ = 0.0f;
+  optimize_last_error_w_ = 0.0f;
+  optimize_neutral_hold_ = false;
+  optimize_trace_actual_w_ = 0.0f;
+  optimize_trace_scaled_actual_w_ = 0.0f;
+  optimize_trace_error_w_ = 0.0f;
+  optimize_trace_command_w_ = 0.0f;
+  optimize_trace_target_w_ = 0.0f;
+  optimize_trace_filtered_w_ = 0.0f;
+  optimize_trace_integrator_w_ = 0.0f;
+  optimize_trace_adjust_divisor_ = 1.0f;
   config_ = nullptr;
-  noise_ = -1;               // Start deterministic noise cycle (-1,0,+1)
   force_integrator_ = 0.0f;  // Ensure stable start for force modes
   last_power_watt_ = 1;
+  anti_repeat_add_positive_ = true;
   
   // Lag-aware initialization
   previous_battery_power_ = 0.0;
@@ -60,6 +71,30 @@ String P1Modifier::getModeString() const {
     case MODE_OPTIMIZE: return "Optimize [" + String(optimize_setpoint_,1) + "W]";
     default: return "Unknown";
   }
+}
+
+void P1Modifier::calculateOptimizeSetpoint() {
+  if (!config_) {
+    return;
+  }
+
+  const float solarPowerW = max(0.0f, config_->actualSolarPower);
+
+  const float baseSetpoint = config_->optimizeDeliverySetpoint;
+  const float highSetpoint = config_->optimizeHighSolarSetpoint;
+  const float minSolar = max(0.1f, config_->optimizeMinSolarPower);
+  const float solarThreshold = max(minSolar + 1.0f, config_->optimizeSolarThreshold);
+
+  float targetDeliveryW = baseSetpoint;
+  if (solarPowerW >= solarThreshold) {
+    targetDeliveryW = highSetpoint;
+  } else if (solarPowerW > minSolar) {
+    float ratio = (solarPowerW - minSolar) / (solarThreshold - minSolar);
+    targetDeliveryW = baseSetpoint + (highSetpoint - baseSetpoint) * ratio;
+  }
+
+  // Meter sign convention: export is negative.
+  optimize_setpoint_ = -targetDeliveryW;
 }
 
 String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser, float batteryPower) {
@@ -98,7 +133,6 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
     previous_battery_power_ = localBatteryPower;
   }
   
-  float powerDelta = localBatteryPower - previous_battery_power_;
   float direction = getPowerDirection(localBatteryPower);
   
   // Detect direction changes (with lag awareness - only confirm after 30 seconds)
@@ -122,6 +156,9 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
 
   previous_battery_power_ = localBatteryPower;
   last_battery_update_ = now;
+
+  // Keep optimize setpoint up-to-date for all modes (reusable outside MODE_OPTIMIZE).
+  calculateOptimizeSetpoint();
   
   switch (current_mode_) {
     case MODE_BATTERY_OFF:
@@ -142,14 +179,15 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
         if (activePowerWatt[0] > 0) {
           // there is power consumption, prevent mode change to discharging
           if (battery_mode_ == BM_OFF) {
-          // If battery is charging or neutral, allow normal charging
-            newPowerWatt[0]  = 0.0f; // Prevent mode change to discharging
+            // If battery is charging or neutral, allow normal charging
+            newPowerWatt[0] = 0.0f; // Prevent mode change to discharging
           } else {
             // Battery is charging - allow normal charging
             newPowerWatt[0] = activePowerWatt[0]/3.0;
           }
-        }  else {
+        } else {
           // we deliver power to the grid
+          newPowerWatt[0] = activePowerWatt[0]/3.0;
         }
       }
       break;
@@ -173,6 +211,11 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
           }
         }  else {
           // we consume power from the grid
+          newPowerWatt[0] = activePowerWatt[0]/3.0;
+          if (newPowerWatt[0] < -optimize_setpoint_) {
+            // Make sure we control at the setpoint
+            newPowerWatt[0] =-optimize_setpoint_/3.0;
+          }
         }
       } 
       break;
@@ -318,46 +361,185 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
       break;
       
     case MODE_OPTIMIZE: {
-      // Use DomoticzLogic for smart battery control
+
+      float adjustDivisor = max(1.0f, config_->optimizeAdjustDivisor);
+      if ((activePowerWatt[0] > 0.7f * optimize_setpoint_) || (activePowerWatt[0] < 1.3f * optimize_setpoint_)) {
+        newPowerWatt[0] = (activePowerWatt[0] - optimize_setpoint_)/adjustDivisor; 
+        if (abs(newPowerWatt[0]) < 5.0f) {
+          // If very close to setpoint, apply minimum adjustment to overcome noise and prevent oscillation around target.
+          if (newPowerWatt[0] > 1.0f) {
+            newPowerWatt[0] = 5.0f; // Minimum adjustment to overcome noise when undercharging
+          } 
+          if (newPowerWatt[0] < -1.0f) {
+            newPowerWatt[0] = -5.0f; // Minimum adjustment to overcome noise when overcharging
+          }
+        }
+        if ((newPowerWatt[0] > -50.0f) && (activePowerWatt[0] <-70.0f) && (battery_mode_ == BM_OFF )) {
+          newPowerWatt[0] = -50.0f; // start charging ealier as the limitation might prevent this.
+        }
+
+      } else {
+        // within 30% of setpoint, hold steady to avoid oscillation from noise and lag
+        newPowerWatt[0] = 0.0f;
+      }
+
+      break;
       if (config_) {
-        // Ensure DomoticzLogic has config pointer
-        domoticz_logic_.setConfig(config_);
-        
-        float currentP1Delivery = -activePowerWatt[0];  // Current grid delivery (positive = export)
-        float solar = config_->actualSolarPower;
-        float evaCharge = (localBatteryPower < -10) ? abs(localBatteryPower) : 0;
-        float evaDischarge = (localBatteryPower > 10) ? localBatteryPower : 0;
-        float soc = config_->batterySOC;
-        int seconds = millis() / 1000;
-        
-        // Calculate power adjustment using DomoticzLogic
-        float adjustment = domoticz_logic_.calculate(currentP1Delivery, solar, 
-                                                     evaCharge, evaDischarge, soc, seconds);
-        
-        optimize_setpoint_ = domoticz_logic_.getDeliverySetpoint();
-        power_adjustment_ = adjustment;
-        
-        // Apply adjustment to power value
-        newPowerWatt[0] = activePowerWatt[0] + adjustment;
-        
+        float currentP1Power = activePowerWatt[0];  // meter sign: negative = export to grid
+        float adjustDivisor = max(1.0f, config_->optimizeAdjustDivisor);
+        float scaledCurrentP1Power = currentP1Power / adjustDivisor;
+
+        // Error for optimize control in meter sign convention.
+        // Negative/positive values indicate how far measured grid power is from target.
+        float errorW = optimize_setpoint_ - scaledCurrentP1Power;
+        float realErrorW = optimize_setpoint_ - currentP1Power;
+        float realDeadbandW = max(0.0f, config_->optimizeErrorDeadband);
+        bool realInDeadband = fabs(realErrorW) <= realDeadbandW;
+
+        // Neutral zone + hysteresis to avoid charge/discharge oscillation from delayed response.
+        // Inside this window we command zero correction so the battery can settle.
+        float tolLow = min(config_->optimizeToleranceLow, config_->optimizeToleranceHigh);
+        float tolHigh = max(config_->optimizeToleranceLow, config_->optimizeToleranceHigh);
+        float hysteresisMargin = max(1.0f, config_->optimizeHysteresisDelivery);
+
+        if (!optimize_neutral_hold_) {
+          if (errorW >= tolLow && errorW <= tolHigh) {
+            optimize_neutral_hold_ = true;
+          }
+        } else {
+          if (errorW < (tolLow - hysteresisMargin) || errorW > (tolHigh + hysteresisMargin)) {
+            optimize_neutral_hold_ = false;
+          }
+        }
+
+        // Very small slow integrator with anti-windup.
+        // Scale by telegram interval and keep contribution intentionally tiny.
+        float dtSec = constrain(telegram_interval_sec_, 0.5f, 60.0f);
+        float integratorStepPerMin = max(0.0f, config_->optimizeIntegratorStep) * 0.1f;
+        float integratorStep = integratorStepPerMin * (dtSec / 60.0f);
+        float integratorMin = min(config_->optimizeIntegratorMin, config_->optimizeIntegratorMax) * 0.5f;
+        float integratorMax = max(config_->optimizeIntegratorMin, config_->optimizeIntegratorMax) * 0.5f;
+
+        if (optimize_neutral_hold_) {
+          // Decay integrator while holding neutral to prevent hidden windup.
+          if (optimize_integrator_ > integratorStep) {
+            optimize_integrator_ -= integratorStep;
+          } else if (optimize_integrator_ < -integratorStep) {
+            optimize_integrator_ += integratorStep;
+          } else {
+            optimize_integrator_ = 0.0f;
+          }
+        } else {
+          float deadband = max(0.0f, config_->optimizeErrorDeadband);
+          if (fabs(errorW) > deadband) {
+            if (errorW > 0.0f) {
+              optimize_integrator_ += integratorStep;
+            } else {
+              optimize_integrator_ -= integratorStep;
+            }
+          }
+
+          // Reduce integrator quickly on large mismatch or reversal to avoid fighting battery control.
+          float largeErr = max(1.0f, config_->optimizeLargeErrorThreshold);
+          if (fabs(errorW) > largeErr || ((errorW * optimize_last_error_w_) < 0.0f)) {
+            float reduction = constrain(config_->optimizeIntegratorReduction, 0.0f, 1.0f);
+            optimize_integrator_ *= reduction;
+          }
+        }
+        optimize_integrator_ = constrain(optimize_integrator_, integratorMin, integratorMax);
+        optimize_last_error_w_ = errorW;
+
+        // Proportional correction outside neutral hold; zero correction while holding neutral.
+        float commandOffsetW = 0.0f;
+        if (!optimize_neutral_hold_) {
+          commandOffsetW = (errorW / adjustDivisor) + optimize_integrator_;
+
+          // Optional stronger correction when error is large.
+          if (fabs(errorW) >= max(1.0f, config_->optimizeMinDeliveryForAdjust)) {
+            commandOffsetW = errorW + optimize_integrator_;
+          }
+
+          // Re-apply configured hysteresis adjustment as directional bias when far from target.
+          if (errorW < (tolLow - hysteresisMargin)) {
+            commandOffsetW += config_->optimizeHysteresisAdjustment;
+          } else if (errorW > (tolHigh + hysteresisMargin)) {
+            commandOffsetW -= config_->optimizeHysteresisAdjustment;
+          }
+        }
+
+        // Build target in scaled domain so filtering is performed on divided value.
+        float targetScaledPower = scaledCurrentP1Power + commandOffsetW;
+        float targetModifiedPower = targetScaledPower * adjustDivisor;
+
+        // First-order low-pass on modified-power target, updated per telegram interval.
+        float tauSec = max(1.0f, config_->optimizeFilterTimeConstant);
+        float alpha = dtSec / (tauSec + dtSec);
+
+        if (!filter_initialized_) {
+          filtered_delivery_w_ = scaledCurrentP1Power;
+          filter_initialized_ = true;
+        } else {
+          filtered_delivery_w_ += alpha * (targetScaledPower - filtered_delivery_w_);
+        }
+
+        newPowerWatt[0] = filtered_delivery_w_ * adjustDivisor;
+
+        // If real and modified signs oppose (beyond deadband), settle to zero to avoid oscillation.
+        bool signMismatch =
+            (fabs(currentP1Power) > realDeadbandW) &&
+            (fabs(newPowerWatt[0]) > realDeadbandW) &&
+            ((currentP1Power * newPowerWatt[0]) < 0.0f);
+
+        // If real (non-divided) actual is within deadband, force modified output to zero.
+        if (realInDeadband || signMismatch) {
+          // Correct low-pass filter state as well, so no stale filtered value remains.
+          filtered_delivery_w_ = 0.0f;
+          filter_initialized_ = false;
+          targetScaledPower = 0.0f;
+          targetModifiedPower = 0.0f;
+          commandOffsetW = 0.0f;
+          newPowerWatt[0] = 0.0f;
+          optimize_neutral_hold_ = true;
+          optimize_integrator_ *= 0.9f;
+        }
+
+        // Output limiter to prevent aggressive battery oscillation:
+        // - Normal range: max ±100W
+        // - Only when actual exceeds ±1500W: max ±500W
+        float outputLimitW = (fabs(currentP1Power) > 1000.0f) ? 500.0f : 100.0f;
+        newPowerWatt[0] = constrain(newPowerWatt[0], -outputLimitW, outputLimitW);
+
+        // Save trace values for API/debugging.
+        optimize_trace_actual_w_ = currentP1Power;
+        optimize_trace_scaled_actual_w_ = scaledCurrentP1Power;
+        optimize_trace_error_w_ = errorW;
+        optimize_trace_command_w_ = commandOffsetW * adjustDivisor;
+        optimize_trace_target_w_ = targetModifiedPower;
+        optimize_trace_filtered_w_ = newPowerWatt[0];
+        optimize_trace_integrator_w_ = optimize_integrator_;
+        optimize_trace_adjust_divisor_ = adjustDivisor;
+
         logPrint("[OPTIMIZE] Current=");
-        logPrint(String(currentP1Delivery, 1));
+        logPrint(String(currentP1Power, 1));
+        logPrint("W, Scaled=");
+        logPrint(String(scaledCurrentP1Power, 1));
+        logPrint("W, Error=");
+        logPrint(String(errorW, 1));
+        logPrint("W, TargetMod=");
+        logPrint(String(targetModifiedPower, 1));
+        logPrint("W, FilteredMod=");
+        logPrint(String(newPowerWatt[0], 1));
         logPrint("W, Setpoint=");
         logPrint(String(optimize_setpoint_, 1));
-        logPrint("W, Adjustment=");
-        logPrint(String(adjustment, 1));
-        logPrint("W, Solar=");
-        logPrint(String(solar, 1));
-        logPrint("W, Battery=");
-        logPrint(String(localBatteryPower, 1));
-        logPrintln("W");
-        
-        // Update integrator every minute
-        static unsigned long lastMinuteUpdate = 0;
-        if (millis() - lastMinuteUpdate >= 60000) {
-          domoticz_logic_.updateMinute(currentP1Delivery);
-          lastMinuteUpdate = millis();
-        }
+        logPrint("W, Hold=");
+        logPrint(optimize_neutral_hold_ ? "Y" : "N");
+        logPrint(", SignMismatch=");
+        logPrint(signMismatch ? "Y" : "N");
+        logPrint(", I=");
+        logPrint(String(optimize_integrator_, 2));
+        logPrint("W, Tau=");
+        logPrint(String(tauSec, 1));
+        logPrintln("s");
       } else {
         logPrintln("[OPTIMIZE] ERROR: Config not set! Use setConfig().");
       }
@@ -371,14 +553,10 @@ String P1Modifier::modify(const String& originalTelegram, const P1Parser& parser
   logPrint(String(newPowerWatt[0],1));
   logPrintln("W");
 
-
-  // Add small noise AFTER mode calculations to help battery controller detect changes
-  // This prevents wild fluctuations from integrators while ensuring value changes
-  //if (++noise_ > 1) noise_ = -1; // Cycle through -1, 0, +1
-  //newPowerWatt[0] += noise_ ; // ±1W noise
-  if (newPowerWatt[0] == last_power_watt_) {
-    // Ensure power changes slightly each telegram to help battery controller
-    newPowerWatt[0] += 1; // Change by at least 1W
+  if ((fabs(newPowerWatt[0] - static_cast<float>(last_power_watt_)) < 0.01f) && (abs(newPowerWatt[0]) >0.99f)) {
+    // Ensure power alternates when it repeats, to avoid sending identical output values.
+    newPowerWatt[0] += anti_repeat_add_positive_ ? 1.0f : -1.0f;
+    anti_repeat_add_positive_ = !anti_repeat_add_positive_;
   }
   last_power_watt_ = newPowerWatt[0];
   

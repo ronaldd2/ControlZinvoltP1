@@ -257,6 +257,12 @@ String getSettingsPage() {
                 <input type="number" id="optSolarThr" min="100" max="1000" step="10" value="300">
             </div>
 
+            <div class="control-group">
+                <label>Filter Time Constant (s) <span style="color: #667eea; font-size: 0.85em;">Default: 45s</span></label>
+                <small style="color: #666; display: block; margin-bottom: 8px;">First-order filter on measured grid delivery, updated each telegram interval</small>
+                <input type="number" id="optFilterTau" min="1" max="300" step="1" value="45">
+            </div>
+
             <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Control Parameters</h3>
             
             <div class="control-group">
@@ -520,6 +526,7 @@ String getSettingsPage() {
                 document.getElementById('optMinSolar').value = data.minSolarPower || 20;
                 document.getElementById('optSolarThr').value = data.solarThreshold || 300;
                 document.getElementById('optHiSolSet').value = data.highSolarSetpoint || 100;
+                document.getElementById('optFilterTau').value = data.filterTimeConstant || 45;
                 document.getElementById('optMinDelAdj').value = data.minDeliveryForAdjust || 60;
                 document.getElementById('optAdjDiv').value = data.adjustDivisor || 3.0;
                 document.getElementById('optTolLow').value = data.toleranceLow || -5;
@@ -626,6 +633,7 @@ String getSettingsPage() {
             formData.append('minSolarPower', document.getElementById('optMinSolar').value);
             formData.append('solarThreshold', document.getElementById('optSolarThr').value);
             formData.append('highSolarSetpoint', document.getElementById('optHiSolSet').value);
+            formData.append('filterTimeConstant', document.getElementById('optFilterTau').value);
             formData.append('minDeliveryForAdjust', document.getElementById('optMinDelAdj').value);
             formData.append('adjustDivisor', document.getElementById('optAdjDiv').value);
             formData.append('toleranceLow', document.getElementById('optTolLow').value);
@@ -663,6 +671,7 @@ String getSettingsPage() {
             document.getElementById('optMinSolar').value = 20;
             document.getElementById('optSolarThr').value = 300;
             document.getElementById('optHiSolSet').value = 100;
+            document.getElementById('optFilterTau').value = 45;
             document.getElementById('optMinDelAdj').value = 60;
             document.getElementById('optAdjDiv').value = 3.0;
             document.getElementById('optTolLow').value = -5;

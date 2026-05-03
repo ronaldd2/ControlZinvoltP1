@@ -24,6 +24,7 @@ void Config::reset() {
   optimizeMinSolarPower = 20.0;
   optimizeSolarThreshold = 300.0;
   optimizeHighSolarSetpoint = 100.0;
+  optimizeFilterTimeConstant = 45.0;
   optimizeMinDeliveryForAdjust = 60.0;
   optimizeAdjustDivisor = 3.0;
   optimizeToleranceLow = -5.0;
@@ -98,6 +99,7 @@ void Config::load(Preferences& prefs) {
   optimizeMinSolarPower = prefs.getFloat("optMinSolar", 20.0);
   optimizeSolarThreshold = prefs.getFloat("optSolarThr", 300.0);
   optimizeHighSolarSetpoint = prefs.getFloat("optHiSolSet", 100.0);
+  optimizeFilterTimeConstant = prefs.getFloat("optFiltTau", 45.0);
   optimizeMinDeliveryForAdjust = prefs.getFloat("optMinDelAdj", 60.0);
   optimizeAdjustDivisor = prefs.getFloat("optAdjDiv", 3.0);
   optimizeToleranceLow = prefs.getFloat("optTolLow", -5.0);
@@ -193,6 +195,7 @@ void Config::save(Preferences& prefs) {
   prefs.putFloat("optMinSolar", optimizeMinSolarPower);
   prefs.putFloat("optSolarThr", optimizeSolarThreshold);
   prefs.putFloat("optHiSolSet", optimizeHighSolarSetpoint);
+  prefs.putFloat("optFiltTau", optimizeFilterTimeConstant);
   prefs.putFloat("optMinDelAdj", optimizeMinDeliveryForAdjust);
   prefs.putFloat("optAdjDiv", optimizeAdjustDivisor);
   prefs.putFloat("optTolLow", optimizeToleranceLow);

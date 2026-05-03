@@ -206,7 +206,6 @@ void setup() {
   p1Modifier.setForcePower(config.forcePower);
   p1Modifier.setPowerSetpoint(config.powerSetpoint);
   p1Modifier.setSelfUseLimitThreshold(config.selfUseLimitThreshold);
-  p1Modifier.setSelfUseLimitSmoothing(config.selfUseSmoothingFactor);
 
   
   // Create tasks for P1 reading and relaying
