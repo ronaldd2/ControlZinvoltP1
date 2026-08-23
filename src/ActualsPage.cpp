@@ -114,12 +114,6 @@ static const char PAGE_STYLES[] = R"rawliteral(
             background: #f8d7da;
             color: #721c24;
         }
-        .trace-good {
-            color: #155724;
-        }
-        .trace-warn {
-            color: #856404;
-        }
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 1.8em;
@@ -225,24 +219,6 @@ String getActualsPage() {
                             <div style="font-size: 0.9em; color: #888;">L3</div>
                             <div style="font-weight: bold;" id="voltageL3">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
                         </div>
-                    </div>
-                </details>
-            </div>
-
-            <div id="optimizeDebugPanel" style="margin-top: 12px; padding: 12px; background: #f0f0f0; border-radius: 6px; font-size: 0.85em; display: none;">
-                <details>
-                    <summary style="cursor: pointer; font-weight: 500; color: #666;">🧪 Optimize Debug Trace</summary>
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px;">
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Actual</span><br><strong id="optTraceActual">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Scaled Actual</span><br><strong id="optTraceScaledActual">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Setpoint</span><br><strong id="optTraceSetpoint">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Error</span><br><strong id="optTraceError">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Command</span><br><strong id="optTraceCommand">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Target</span><br><strong id="optTraceTarget">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Filtered</span><br><strong id="optTraceFiltered">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Integrator</span><br><strong id="optTraceIntegrator">-</strong> W</div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Adjust Divisor</span><br><strong id="optTraceAdjustDiv">-</strong></div>
-                        <div style="padding: 8px; background: white; border-radius: 4px;"><span style="color:#888;">Neutral Hold</span><br><strong id="optTraceHold">-</strong></div>
                     </div>
                 </details>
             </div>
@@ -423,44 +399,15 @@ String getActualsPage() {
                 const modifier = statusData.modifier || {};
                 const wifi = statusData.wifi || {};
                 const p1 = statusData.p1 || {};
-                const optimizeCfg = statusData.optimizeConfig || {};
                 document.getElementById('currentMode').textContent = modifier.modeString || '—';
 
                 const optimizeSetpointEl = document.getElementById('optimizeSetpointDiv');
-                const optimizeDebugPanel = document.getElementById('optimizeDebugPanel');
                 if (typeof modifier.optimizeSetpoint === 'number') {
                     optimizeSetpointEl.style.display = 'block';
                     optimizeSetpointEl.textContent = 'Setpoint: ' + Math.round(modifier.optimizeSetpoint) + ' W';
-
-                    const trace = modifier.optimizeTrace || {};
-                    optimizeDebugPanel.style.display = (modifier.mode === 8) ? 'block' : 'none';
-                    document.getElementById('optTraceActual').textContent = Math.round(trace.actualW || 0);
-                    document.getElementById('optTraceScaledActual').textContent = Math.round(trace.scaledActualW || 0);
-                    document.getElementById('optTraceSetpoint').textContent = Math.round(modifier.optimizeSetpoint || 0);
-                    document.getElementById('optTraceError').textContent = Math.round(trace.errorW || 0);
-                    document.getElementById('optTraceCommand').textContent = Math.round(trace.commandW || 0);
-                    document.getElementById('optTraceTarget').textContent = Math.round(trace.targetW || 0);
-                    document.getElementById('optTraceFiltered').textContent = Math.round(trace.filteredW || 0);
-                    document.getElementById('optTraceIntegrator').textContent = (trace.integratorW || 0).toFixed(2);
-                    document.getElementById('optTraceAdjustDiv').textContent = (trace.adjustDivisor || 1).toFixed(2);
-                    document.getElementById('optTraceHold').textContent = trace.neutralHold ? 'Yes' : 'No';
-
-                    const tolLow = (typeof optimizeCfg.toleranceLow === 'number') ? optimizeCfg.toleranceLow : -5;
-                    const tolHigh = (typeof optimizeCfg.toleranceHigh === 'number') ? optimizeCfg.toleranceHigh : 15;
-                    const errorValue = (typeof trace.errorW === 'number') ? trace.errorW : 0;
-                    const errorInBand = errorValue >= tolLow && errorValue <= tolHigh;
-
-                    const errorEl = document.getElementById('optTraceError');
-                    errorEl.classList.remove('trace-good', 'trace-warn');
-                    errorEl.classList.add(errorInBand ? 'trace-good' : 'trace-warn');
-
-                    const holdEl = document.getElementById('optTraceHold');
-                    holdEl.classList.remove('trace-good', 'trace-warn');
-                    holdEl.classList.add(trace.neutralHold ? 'trace-good' : 'trace-warn');
                 } else {
                     optimizeSetpointEl.style.display = 'block';
                     optimizeSetpointEl.textContent = 'Setpoint: 0 W';
-                    optimizeDebugPanel.style.display = 'none';
                 }
                 
                 document.getElementById('uptime').textContent = formatUptime(statusData.uptime || 0);

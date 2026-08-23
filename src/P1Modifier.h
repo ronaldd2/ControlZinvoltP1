@@ -75,15 +75,6 @@ public:
   float getSelfUseLimitThreshold() const { return self_use_limit_threshold_; }
   float getOptimizeSetpoint() const { return optimize_setpoint_; }
   void calculateOptimizeSetpoint();
-  float getOptimizeTraceActualW() const { return optimize_trace_actual_w_; }
-  float getOptimizeTraceScaledActualW() const { return optimize_trace_scaled_actual_w_; }
-  float getOptimizeTraceErrorW() const { return optimize_trace_error_w_; }
-  float getOptimizeTraceCommandW() const { return optimize_trace_command_w_; }
-  float getOptimizeTraceTargetW() const { return optimize_trace_target_w_; }
-  float getOptimizeTraceFilteredW() const { return optimize_trace_filtered_w_; }
-  float getOptimizeTraceIntegratorW() const { return optimize_trace_integrator_w_; }
-  float getOptimizeTraceAdjustDivisor() const { return optimize_trace_adjust_divisor_; }
-  bool getOptimizeTraceNeutralHold() const { return optimize_neutral_hold_; }
   
 private:
   OperationMode current_mode_;
@@ -101,19 +92,6 @@ private:
   // Self-use limiter
   float self_use_limit_threshold_;     // Extra power to deliver to grid (default 20W)
   float optimize_setpoint_;         // Current optimize setpoint
-  float filtered_delivery_w_;       // Filtered measured grid delivery (W)
-  bool filter_initialized_;         // Whether filter has initial value
-  float optimize_integrator_;       // Slow trim integrator for optimize mode
-  float optimize_last_error_w_;     // Previous optimize error for anti-windup/reversal handling
-  bool optimize_neutral_hold_;      // Hysteresis state for neutral correction hold
-  float optimize_trace_actual_w_;   // Last measured actual grid power (W)
-  float optimize_trace_scaled_actual_w_; // Last scaled actual reading used for control (W)
-  float optimize_trace_error_w_;    // Last control error used by optimize loop (W)
-  float optimize_trace_command_w_;  // Last optimize command offset applied (W)
-  float optimize_trace_target_w_;   // Last target modified power (W)
-  float optimize_trace_filtered_w_; // Last filtered target/commanded power (W)
-  float optimize_trace_integrator_w_; // Last optimize integrator value (W)
-  float optimize_trace_adjust_divisor_; // Last adjust divisor used in optimize loop
   
   // Lag-aware charge/discharge mode tracking
   float previous_battery_power_;      // Previous battery power reading to detect trends
@@ -136,6 +114,8 @@ private:
   float getPowerDirection(float batteryPower);  // Returns trend: negative/positive/zero
   // Generic integrator updater with optional symmetric step and guards
   float updateIntegrator(float currentValue, float step, bool applyPos, bool applyNeg);
+  // Shared optimize adjustment used by optimize/charge-only/discharge-only modes.
+  float calculateOptimizeAdjustmentW(float activePowerW);
 };
 
 #endif // P1MODIFIER_H

@@ -620,19 +620,7 @@ void WebInterface::handleGetOptimizeConfig(AsyncWebServerRequest* request) {
   doc["minSolarPower"] = config_->optimizeMinSolarPower;
   doc["solarThreshold"] = config_->optimizeSolarThreshold;
   doc["highSolarSetpoint"] = config_->optimizeHighSolarSetpoint;
-  doc["filterTimeConstant"] = config_->optimizeFilterTimeConstant;
-  doc["minDeliveryForAdjust"] = config_->optimizeMinDeliveryForAdjust;
   doc["adjustDivisor"] = config_->optimizeAdjustDivisor;
-  doc["toleranceLow"] = config_->optimizeToleranceLow;
-  doc["toleranceHigh"] = config_->optimizeToleranceHigh;
-  doc["largeErrorThreshold"] = config_->optimizeLargeErrorThreshold;
-  doc["integratorReduction"] = config_->optimizeIntegratorReduction;
-  doc["hysteresisDelivery"] = config_->optimizeHysteresisDelivery;
-  doc["hysteresisAdjustment"] = config_->optimizeHysteresisAdjustment;
-  doc["integratorMin"] = config_->optimizeIntegratorMin;
-  doc["integratorMax"] = config_->optimizeIntegratorMax;
-  doc["integratorStep"] = config_->optimizeIntegratorStep;
-  doc["errorDeadband"] = config_->optimizeErrorDeadband;
   
   String response;
   serializeJson(doc, response);
@@ -662,59 +650,8 @@ void WebInterface::handleSetOptimizeConfig(AsyncWebServerRequest* request) {
     config_->optimizeHighSolarSetpoint = request->getParam("highSolarSetpoint", true)->value().toFloat();
     updated = true;
   }
-  if (request->hasParam("filterTimeConstant", true)) {
-    config_->optimizeFilterTimeConstant = request->getParam("filterTimeConstant", true)->value().toFloat();
-    if (config_->optimizeFilterTimeConstant < 1.0f) {
-      config_->optimizeFilterTimeConstant = 1.0f;
-    }
-    updated = true;
-  }
-  if (request->hasParam("minDeliveryForAdjust", true)) {
-    config_->optimizeMinDeliveryForAdjust = request->getParam("minDeliveryForAdjust", true)->value().toFloat();
-    updated = true;
-  }
   if (request->hasParam("adjustDivisor", true)) {
     config_->optimizeAdjustDivisor = request->getParam("adjustDivisor", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("toleranceLow", true)) {
-    config_->optimizeToleranceLow = request->getParam("toleranceLow", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("toleranceHigh", true)) {
-    config_->optimizeToleranceHigh = request->getParam("toleranceHigh", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("largeErrorThreshold", true)) {
-    config_->optimizeLargeErrorThreshold = request->getParam("largeErrorThreshold", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("integratorReduction", true)) {
-    config_->optimizeIntegratorReduction = request->getParam("integratorReduction", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("hysteresisDelivery", true)) {
-    config_->optimizeHysteresisDelivery = request->getParam("hysteresisDelivery", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("hysteresisAdjustment", true)) {
-    config_->optimizeHysteresisAdjustment = request->getParam("hysteresisAdjustment", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("integratorMin", true)) {
-    config_->optimizeIntegratorMin = request->getParam("integratorMin", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("integratorMax", true)) {
-    config_->optimizeIntegratorMax = request->getParam("integratorMax", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("integratorStep", true)) {
-    config_->optimizeIntegratorStep = request->getParam("integratorStep", true)->value().toFloat();
-    updated = true;
-  }
-  if (request->hasParam("errorDeadband", true)) {
-    config_->optimizeErrorDeadband = request->getParam("errorDeadband", true)->value().toFloat();
     updated = true;
   }
   
@@ -768,17 +705,6 @@ String WebInterface::getStatusJSON() {
   doc["modifier"]["forcePower"] = modifier_->getForcePower();
   doc["modifier"]["powerSetpoint"] = modifier_->getPowerSetpoint();
   doc["modifier"]["optimizeSetpoint"] = modifier_->getOptimizeSetpoint();
-  doc["modifier"]["optimizeTrace"]["actualW"] = modifier_->getOptimizeTraceActualW();
-  doc["modifier"]["optimizeTrace"]["scaledActualW"] = modifier_->getOptimizeTraceScaledActualW();
-  doc["modifier"]["optimizeTrace"]["errorW"] = modifier_->getOptimizeTraceErrorW();
-  doc["modifier"]["optimizeTrace"]["commandW"] = modifier_->getOptimizeTraceCommandW();
-  doc["modifier"]["optimizeTrace"]["targetW"] = modifier_->getOptimizeTraceTargetW();
-  doc["modifier"]["optimizeTrace"]["filteredW"] = modifier_->getOptimizeTraceFilteredW();
-  doc["modifier"]["optimizeTrace"]["integratorW"] = modifier_->getOptimizeTraceIntegratorW();
-  doc["modifier"]["optimizeTrace"]["adjustDivisor"] = modifier_->getOptimizeTraceAdjustDivisor();
-  doc["modifier"]["optimizeTrace"]["neutralHold"] = modifier_->getOptimizeTraceNeutralHold();
-  doc["optimizeConfig"]["toleranceLow"] = config_->optimizeToleranceLow;
-  doc["optimizeConfig"]["toleranceHigh"] = config_->optimizeToleranceHigh;
   
   // Battery data from AlphaESS
   doc["battery"]["backend"] = config_->batteryBackend;

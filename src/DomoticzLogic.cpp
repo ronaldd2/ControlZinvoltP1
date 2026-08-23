@@ -37,6 +37,7 @@ float DomoticzLogic::calculateDeliverySetpoint(float solar, float soc,
 float DomoticzLogic::calculate(float currentP1Delivery, float solar, 
                               float evaCharge, float evaDischarge, 
                               float soc, int seconds) {
+    (void)seconds;
     if (!config_) return 0.0f;
     
     // Calculate delivery setpoint
@@ -45,34 +46,22 @@ float DomoticzLogic::calculate(float currentP1Delivery, float solar,
     // Calculate power adjustment
     float adjustment = 0.0f;
     
-    if (currentP1Delivery > config_->optimizeMinDeliveryForAdjust && 
-        evaCharge < config_->optimizeMinEvaActivity) {
-        adjustment = currentP1Delivery - delivery_setpoint_;
-    } else {
-        adjustment = (currentP1Delivery - delivery_setpoint_) / config_->optimizeAdjustDivisor;
-    }
-    
-    // Within tolerance band - no adjustment needed
     float error = currentP1Delivery - delivery_setpoint_;
-    if (error > config_->optimizeToleranceLow && error < config_->optimizeToleranceHigh) {
+    float divisor = max(1.0f, config_->optimizeAdjustDivisor);
+
+    if (evaCharge < config_->optimizeMinEvaActivity) {
+        adjustment = error;
+    } else {
+        adjustment = error / divisor;
+    }
+
+    // Small fixed deadband to avoid noise-driven oscillation.
+    if (fabs(error) <= 5.0f) {
         adjustment = 0.0f;
     }
     
     // Add integrator contribution
     adjustment += integrator_;
-    
-    // Reduce integrator if error is large
-    if (abs(error) > config_->optimizeLargeErrorThreshold) {
-        integrator_ *= config_->optimizeIntegratorReduction;
-    }
-    
-    // Handle EVA hysteresis - encourage starting when near zero
-    if (currentP1Delivery < config_->optimizeHysteresisDelivery && 
-        adjustment > config_->optimizeHysteresisAdjustment && 
-        adjustment < (config_->optimizeMinEvaActivity) && 
-        evaDischarge == 0 && evaCharge == 0) {
-        adjustment = config_->optimizeHysteresisAdjustment + (seconds % 3) - 1;
-    }
     
     return floor(adjustment);
 }
@@ -81,16 +70,18 @@ void DomoticzLogic::updateMinute(float currentP1Delivery) {
     if (!config_) return;
     
     float error = currentP1Delivery - delivery_setpoint_;
+    const float deadbandW = 5.0f;
+    const float integratorStep = 1.0f;
     
     // Update integrator based on error
-    if (error > config_->optimizeErrorDeadband) {
-        integrator_ += config_->optimizeIntegratorStep;
-    } else if (error < -config_->optimizeErrorDeadband) {
-        integrator_ -= config_->optimizeIntegratorStep;
+    if (error > deadbandW) {
+        integrator_ += integratorStep;
+    } else if (error < -deadbandW) {
+        integrator_ -= integratorStep;
     }
     
     // Clamp integrator to prevent wind-up
-    integrator_ = constrain(integrator_, config_->optimizeIntegratorMin, config_->optimizeIntegratorMax);
+    integrator_ = constrain(integrator_, -10.0f, 10.0f);
     
     last_minute_update_ = millis();
 }

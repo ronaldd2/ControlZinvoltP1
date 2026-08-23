@@ -81,10 +81,56 @@ bool getMqttConnected() {
   return homeAssistant.isConnected();
 }
 
+constexpr unsigned long WIFI_RETRY_INTERVAL_MS = 10000UL;
+constexpr unsigned long WIFI_FAILSAFE_RESET_MS = 20UL * 60UL * 1000UL;
+
 // P1 telegram buffer
 String currentP1Telegram = "";
 bool telegramComplete = false;
 bool telegramSent = false;
+
+void handleWiFiConnectivity() {
+  static unsigned long lastReconnectAttempt = 0;
+  static unsigned long wifiDisconnectedSince = 0;
+
+  const wl_status_t status = WiFi.status();
+
+  if (status == WL_CONNECTED) {
+    if (wifiDisconnectedSince != 0) {
+      logPrintln("[WIFI] Connection restored.");
+      wifiDisconnectedSince = 0;
+    }
+    return;
+  }
+
+  if (wifiDisconnectedSince == 0) {
+    wifiDisconnectedSince = millis();
+    logPrintln("[WIFI] WiFi connection lost - starting reconnect loop.");
+  }
+
+  if (millis() - wifiDisconnectedSince >= WIFI_FAILSAFE_RESET_MS) {
+    logPrintln("[WIFI] WiFi unavailable for 20 minutes. Triggering watchdog reset.");
+    delay(1000);
+    ESP.restart();
+  }
+
+  if (millis() - lastReconnectAttempt < WIFI_RETRY_INTERVAL_MS) {
+    return;
+  }
+
+  lastReconnectAttempt = millis();
+
+  logPrintln("[WIFI] Attempting WiFi reconnect...");
+  WiFi.disconnect();
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin();
+
+  if (WiFi.SSID().isEmpty()) {
+    logPrintln("[WIFI] No saved network credentials found, starting config portal.");
+    wifiManager.autoConnect("ControlZinvoltP1-Setup");
+  }
+}
 
 // TCP clients for P1 streaming
 std::vector<WiFiClient> tcpClients;
@@ -257,8 +303,9 @@ void loop() {
   
   // Handle battery API data fetching (periodic)
   batteryApi.loop();
-  
 
+  // Keep WiFi alive and restore it if the connection is lost
+  handleWiFiConnectivity();
   
   // Handle telnet logging client
   handleTelnetClient();
@@ -286,7 +333,11 @@ void loop() {
 
 void setupWiFi() {
   logPrintln("Setting up WiFi...");
-  
+
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
   // Set custom AP name
   wifiManager.setConfigPortalTimeout(180); // 3 minutes timeout
   

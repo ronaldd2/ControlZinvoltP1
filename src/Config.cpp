@@ -24,19 +24,7 @@ void Config::reset() {
   optimizeMinSolarPower = 20.0;
   optimizeSolarThreshold = 300.0;
   optimizeHighSolarSetpoint = 100.0;
-  optimizeFilterTimeConstant = 45.0;
-  optimizeMinDeliveryForAdjust = 60.0;
   optimizeAdjustDivisor = 3.0;
-  optimizeToleranceLow = -5.0;
-  optimizeToleranceHigh = 15.0;
-  optimizeLargeErrorThreshold = 200.0;
-  optimizeIntegratorReduction = 0.66;
-  optimizeHysteresisDelivery = 40.0;
-  optimizeHysteresisAdjustment = -50.0;
-  optimizeIntegratorMin = -10.0;
-  optimizeIntegratorMax = 10.0;
-  optimizeIntegratorStep = 1.0;
-  optimizeErrorDeadband = 5.0;
   
   batterySOC = 0.0;
   batteryPower = 0.0;
@@ -99,19 +87,7 @@ void Config::load(Preferences& prefs) {
   optimizeMinSolarPower = prefs.getFloat("optMinSolar", 20.0);
   optimizeSolarThreshold = prefs.getFloat("optSolarThr", 300.0);
   optimizeHighSolarSetpoint = prefs.getFloat("optHiSolSet", 100.0);
-  optimizeFilterTimeConstant = prefs.getFloat("optFiltTau", 45.0);
-  optimizeMinDeliveryForAdjust = prefs.getFloat("optMinDelAdj", 60.0);
   optimizeAdjustDivisor = prefs.getFloat("optAdjDiv", 3.0);
-  optimizeToleranceLow = prefs.getFloat("optTolLow", -5.0);
-  optimizeToleranceHigh = prefs.getFloat("optTolHigh", 15.0);
-  optimizeLargeErrorThreshold = prefs.getFloat("optLrgErrThr", 200.0);
-  optimizeIntegratorReduction = prefs.getFloat("optIntRed", 0.66);
-  optimizeHysteresisDelivery = prefs.getFloat("optHysDel", 40.0);
-  optimizeHysteresisAdjustment = prefs.getFloat("optHysAdj", -50.0);
-  optimizeIntegratorMin = prefs.getFloat("optIntMin", -10.0);
-  optimizeIntegratorMax = prefs.getFloat("optIntMax", 10.0);
-  optimizeIntegratorStep = prefs.getFloat("optIntStep", 1.0);
-  optimizeErrorDeadband = prefs.getFloat("optErrDead", 5.0);
   
   mqttServer = prefs.getString("mqttServer", "");
   mqttPort = prefs.getInt("mqttPort", 1883);
@@ -195,19 +171,7 @@ void Config::save(Preferences& prefs) {
   prefs.putFloat("optMinSolar", optimizeMinSolarPower);
   prefs.putFloat("optSolarThr", optimizeSolarThreshold);
   prefs.putFloat("optHiSolSet", optimizeHighSolarSetpoint);
-  prefs.putFloat("optFiltTau", optimizeFilterTimeConstant);
-  prefs.putFloat("optMinDelAdj", optimizeMinDeliveryForAdjust);
   prefs.putFloat("optAdjDiv", optimizeAdjustDivisor);
-  prefs.putFloat("optTolLow", optimizeToleranceLow);
-  prefs.putFloat("optTolHigh", optimizeToleranceHigh);
-  prefs.putFloat("optLrgErrThr", optimizeLargeErrorThreshold);
-  prefs.putFloat("optIntRed", optimizeIntegratorReduction);
-  prefs.putFloat("optHysDel", optimizeHysteresisDelivery);
-  prefs.putFloat("optHysAdj", optimizeHysteresisAdjustment);
-  prefs.putFloat("optIntMin", optimizeIntegratorMin);
-  prefs.putFloat("optIntMax", optimizeIntegratorMax);
-  prefs.putFloat("optIntStep", optimizeIntegratorStep);
-  prefs.putFloat("optErrDead", optimizeErrorDeadband);
   
   // MQTT Configuration
   prefs.putString("mqttServer", mqttServer);

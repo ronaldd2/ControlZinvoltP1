@@ -257,88 +257,12 @@ String getSettingsPage() {
                 <input type="number" id="optSolarThr" min="100" max="1000" step="10" value="300">
             </div>
 
-            <div class="control-group">
-                <label>Filter Time Constant (s) <span style="color: #667eea; font-size: 0.85em;">Default: 45s</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">First-order filter on measured grid delivery, updated each telegram interval</small>
-                <input type="number" id="optFilterTau" min="1" max="300" step="1" value="45">
-            </div>
-
             <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Control Parameters</h3>
-            
-            <div class="control-group">
-                <label>Min Delivery for Adjust (W) <span style="color: #667eea; font-size: 0.85em;">Default: 60W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Minimum delivery for full adjustment (below uses divisor)</small>
-                <input type="number" id="optMinDelAdj" min="0" max="200" step="5" value="60">
-            </div>
 
             <div class="control-group">
                 <label>Adjust Divisor <span style="color: #667eea; font-size: 0.85em;">Default: 3.0</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Divisor for slow adjustment when below min delivery</small>
+                <small style="color: #666; display: block; margin-bottom: 8px;">Divisor for smoothing optimize corrections</small>
                 <input type="number" id="optAdjDiv" min="1" max="10" step="0.5" value="3.0">
-            </div>
-
-            <div class="control-group">
-                <label>Tolerance Low (W) <span style="color: #667eea; font-size: 0.85em;">Default: -5W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Lower tolerance band (negative value)</small>
-                <input type="number" id="optTolLow" min="-50" max="0" step="1" value="-5">
-            </div>
-
-            <div class="control-group">
-                <label>Tolerance High (W) <span style="color: #667eea; font-size: 0.85em;">Default: 15W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Upper tolerance band</small>
-                <input type="number" id="optTolHigh" min="0" max="100" step="1" value="15">
-            </div>
-
-            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Integrator Settings</h3>
-            
-            <div class="control-group">
-                <label>Large Error Threshold (W) <span style="color: #667eea; font-size: 0.85em;">Default: 200W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Error threshold for integrator reduction</small>
-                <input type="number" id="optLrgErrThr" min="50" max="500" step="10" value="200">
-            </div>
-
-            <div class="control-group">
-                <label>Integrator Reduction <span style="color: #667eea; font-size: 0.85em;">Default: 0.66</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Factor to reduce integrator on large error (0-1)</small>
-                <input type="number" id="optIntRed" min="0.1" max="1.0" step="0.01" value="0.66">
-            </div>
-
-            <div class="control-group">
-                <label>Integrator Min <span style="color: #667eea; font-size: 0.85em;">Default: -10</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Minimum integrator clamp value</small>
-                <input type="number" id="optIntMin" min="-50" max="0" step="1" value="-10">
-            </div>
-
-            <div class="control-group">
-                <label>Integrator Max <span style="color: #667eea; font-size: 0.85em;">Default: 10</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Maximum integrator clamp value</small>
-                <input type="number" id="optIntMax" min="0" max="50" step="1" value="10">
-            </div>
-
-            <div class="control-group">
-                <label>Integrator Step <span style="color: #667eea; font-size: 0.85em;">Default: 1.0</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Increment/decrement step per minute</small>
-                <input type="number" id="optIntStep" min="0.1" max="5.0" step="0.1" value="1.0">
-            </div>
-
-            <div class="control-group">
-                <label>Error Deadband (W) <span style="color: #667eea; font-size: 0.85em;">Default: 5W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Error deadband for integrator update</small>
-                <input type="number" id="optErrDead" min="0" max="50" step="1" value="5">
-            </div>
-
-            <h3 style="color: #667eea; font-size: 1.1em; margin: 20px 0 10px 0; border-bottom: 1px solid #eee; padding-bottom: 5px;">Hysteresis</h3>
-            
-            <div class="control-group">
-                <label>Hysteresis Delivery (W) <span style="color: #667eea; font-size: 0.85em;">Default: 40W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Delivery threshold for hysteresis activation</small>
-                <input type="number" id="optHysDel" min="0" max="100" step="1" value="40">
-            </div>
-
-            <div class="control-group">
-                <label>Hysteresis Adjustment (W) <span style="color: #667eea; font-size: 0.85em;">Default: -50W</span></label>
-                <small style="color: #666; display: block; margin-bottom: 8px;">Adjustment value for hysteresis</small>
-                <input type="number" id="optHysAdj" min="-200" max="0" step="5" value="-50">
             </div>
 
             <div style="display: flex; gap: 10px; flex-wrap: wrap;">
@@ -526,19 +450,7 @@ String getSettingsPage() {
                 document.getElementById('optMinSolar').value = data.minSolarPower || 20;
                 document.getElementById('optSolarThr').value = data.solarThreshold || 300;
                 document.getElementById('optHiSolSet').value = data.highSolarSetpoint || 100;
-                document.getElementById('optFilterTau').value = data.filterTimeConstant || 45;
-                document.getElementById('optMinDelAdj').value = data.minDeliveryForAdjust || 60;
                 document.getElementById('optAdjDiv').value = data.adjustDivisor || 3.0;
-                document.getElementById('optTolLow').value = data.toleranceLow || -5;
-                document.getElementById('optTolHigh').value = data.toleranceHigh || 15;
-                document.getElementById('optLrgErrThr').value = data.largeErrorThreshold || 200;
-                document.getElementById('optIntRed').value = data.integratorReduction || 0.66;
-                document.getElementById('optHysDel').value = data.hysteresisDelivery || 40;
-                document.getElementById('optHysAdj').value = data.hysteresisAdjustment || -50;
-                document.getElementById('optIntMin').value = data.integratorMin || -10;
-                document.getElementById('optIntMax').value = data.integratorMax || 10;
-                document.getElementById('optIntStep').value = data.integratorStep || 1.0;
-                document.getElementById('optErrDead').value = data.errorDeadband || 5;
             } catch (error) {
                 console.error('Error fetching optimize config:', error);
             }
@@ -633,19 +545,7 @@ String getSettingsPage() {
             formData.append('minSolarPower', document.getElementById('optMinSolar').value);
             formData.append('solarThreshold', document.getElementById('optSolarThr').value);
             formData.append('highSolarSetpoint', document.getElementById('optHiSolSet').value);
-            formData.append('filterTimeConstant', document.getElementById('optFilterTau').value);
-            formData.append('minDeliveryForAdjust', document.getElementById('optMinDelAdj').value);
             formData.append('adjustDivisor', document.getElementById('optAdjDiv').value);
-            formData.append('toleranceLow', document.getElementById('optTolLow').value);
-            formData.append('toleranceHigh', document.getElementById('optTolHigh').value);
-            formData.append('largeErrorThreshold', document.getElementById('optLrgErrThr').value);
-            formData.append('integratorReduction', document.getElementById('optIntRed').value);
-            formData.append('hysteresisDelivery', document.getElementById('optHysDel').value);
-            formData.append('hysteresisAdjustment', document.getElementById('optHysAdj').value);
-            formData.append('integratorMin', document.getElementById('optIntMin').value);
-            formData.append('integratorMax', document.getElementById('optIntMax').value);
-            formData.append('integratorStep', document.getElementById('optIntStep').value);
-            formData.append('errorDeadband', document.getElementById('optErrDead').value);
 
             try {
                 const response = await fetch('/api/optimize', {
@@ -671,19 +571,7 @@ String getSettingsPage() {
             document.getElementById('optMinSolar').value = 20;
             document.getElementById('optSolarThr').value = 300;
             document.getElementById('optHiSolSet').value = 100;
-            document.getElementById('optFilterTau').value = 45;
-            document.getElementById('optMinDelAdj').value = 60;
             document.getElementById('optAdjDiv').value = 3.0;
-            document.getElementById('optTolLow').value = -5;
-            document.getElementById('optTolHigh').value = 15;
-            document.getElementById('optLrgErrThr').value = 200;
-            document.getElementById('optIntRed').value = 0.66;
-            document.getElementById('optHysDel').value = 40;
-            document.getElementById('optHysAdj').value = -50;
-            document.getElementById('optIntMin').value = -10;
-            document.getElementById('optIntMax').value = 10;
-            document.getElementById('optIntStep').value = 1.0;
-            document.getElementById('optErrDead').value = 5;
         }
 
         function showOptimizeConfigStatus(message, success) {
