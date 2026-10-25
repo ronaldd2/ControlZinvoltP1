@@ -207,3 +207,44 @@ bool P1Parser::validateCRC(const String& telegram) {
 String P1Parser::getDsmrVersion() const {
   return dsmr_version_.length() > 0 ? dsmr_version_ : "Unknown";
 }
+
+String P1Parser::updateVoltageValues(const String& telegram, float voltageL1, float voltageL2, float voltageL3) {
+  String updated = telegram;
+
+  auto replaceObisValue = [](const String& source, const String& obisCode, float value) -> String {
+    int startIndex = source.indexOf(obisCode);
+    if (startIndex == -1) {
+      return source;
+    }
+
+    int openParen = source.indexOf('(', startIndex);
+    if (openParen == -1) {
+      return source;
+    }
+
+    int closeParen = source.indexOf(')', openParen);
+    if (closeParen == -1) {
+      return source;
+    }
+
+    String suffix = source.substring(closeParen);
+    String valuePart = source.substring(openParen + 1, closeParen);
+    int unitIndex = valuePart.indexOf('*');
+    String unit = "";
+    if (unitIndex != -1) {
+      unit = valuePart.substring(unitIndex);
+    }
+
+    String replacement = String(value, 1) + unit;
+    String result = source.substring(0, openParen + 1);
+    result += replacement;
+    result += suffix;
+    return result;
+  };
+
+  updated = replaceObisValue(updated, "1-0:32.7.0", voltageL1);
+  updated = replaceObisValue(updated, "1-0:52.7.0", voltageL2);
+  updated = replaceObisValue(updated, "1-0:72.7.0", voltageL3);
+
+  return updated;
+}

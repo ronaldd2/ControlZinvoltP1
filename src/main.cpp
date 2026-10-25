@@ -23,6 +23,7 @@
 #include <ArduinoJson.h>
 #include <Preferences.h>
 #include <ArduinoOTA.h>
+#include <WiFiUdp.h>
 #include <esp_system.h>
 
 #include "P1Parser.h"
@@ -34,6 +35,7 @@
 #include "P1Tasks.h"
 #include "TCPServer.h"
 #include "Version.h"
+#include "ShellyEm3.h"
 
 // Hardware Serial for P1 Port (ESP32-S3)
 #define P1_RX_PIN 1   // GPIO1 (Input RX from smart meter)
@@ -57,6 +59,7 @@ WiFiServer tcpServer(P1_TCP_PORT);
 
 // Global objects
 AsyncWebServer server(80);
+ShellyEm3Reader shellyEm3;
 WiFiManager wifiManager;
 Preferences preferences;
 
@@ -243,6 +246,9 @@ void setup() {
   
   // Setup telnet server for logging
   setupTelnetServer();
+
+  shellyEm3.setConfig(&config);
+  shellyEm3.begin();
   
   // Initialize P1 modifier with config
   p1Modifier.setMode(config.operationMode);
@@ -309,6 +315,9 @@ void loop() {
   
   // Handle telnet logging client
   handleTelnetClient();
+
+  // Handle live Shelly EM3 multicast updates
+  shellyEm3.loop();
   
   // Main loop - most work is done in tasks
   delay(100);

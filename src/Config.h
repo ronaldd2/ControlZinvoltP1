@@ -58,6 +58,20 @@ public:
   float actualPowerL2;
   float actualPowerL3;
   float actualTotalPower;
+
+  // Shelly EM3 live data from multicast UDP broadcast
+  bool shellyDataValid;
+  float shellyPowerL1;
+  float shellyPowerL2;
+  float shellyPowerL3;
+  float shellyTotalPower;
+  float shellyVoltageL1;
+  float shellyVoltageL2;
+  float shellyVoltageL3;
+  float shellyCurrentL1;
+  float shellyCurrentL2;
+  float shellyCurrentL3;
+  unsigned long shellyLastUpdateMs;
   
   // MQTT Configuration
   String mqttServer;

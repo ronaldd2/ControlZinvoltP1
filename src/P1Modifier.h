@@ -44,6 +44,7 @@ public:
   void setMode(OperationMode mode) { current_mode_ = mode; }
   OperationMode getMode() const { return current_mode_; }
   String getModeString() const;
+  String getModeName() const;
   
   // Phase configuration
   void setBatteryPhase(int phase) { battery_phase_ = phase; }

@@ -421,9 +421,8 @@ void HomeAssistant::publishSensors() {
   doc["battery_production"] = config_->batteryProduction;
   doc["battery_consumption"] = config_->batteryConsumption;
   
-  // Operation mode
-  String modeStr = modifier_->getModeString();
-  doc["operation_mode"] = modeStr;
+  // Operation mode (canonical mode name without dynamic suffixes)
+  doc["operation_mode"] = modifier_->getModeName();
   
   // Phase configuration
   int battPhase = modifier_->getBatteryPhase();
@@ -485,18 +484,25 @@ void HomeAssistant::handleCommand(char* topic, byte* payload, unsigned int lengt
     String command = topicStr.substring(baseTopic.length());
     
     if (command == "operation_mode") {
-      if (payloadStr == "Unmodified Forward") modifier_->setMode(MODE_UNMODIFIED);
-      else if (payloadStr == "Off") modifier_->setMode(MODE_BATTERY_OFF);
-      else if (payloadStr == "Force Charge") modifier_->setMode(MODE_FORCE_CHARGE);
-      else if (payloadStr == "Force Discharge") modifier_->setMode(MODE_FORCE_DISCHARGE);
-      else if (payloadStr == "Power Control") modifier_->setMode(MODE_POWER_CONTROL);
-      else if (payloadStr == "Charge Only") modifier_->setMode(MODE_CHARGE_ONLY);
-      else if (payloadStr == "Discharge Only") modifier_->setMode(MODE_DISCHARGE_ONLY);
-      else if (payloadStr == "External Control") modifier_->setMode(MODE_EXTERNAL_CONTROL);
-      else if (payloadStr == "Optimize") modifier_->setMode(MODE_OPTIMIZE);
+      // Accept legacy bracketed values like "Optimize [-15.0W]".
+      String modeValue = payloadStr;
+      int bracketIndex = modeValue.indexOf(" [");
+      if (bracketIndex >= 0) {
+        modeValue = modeValue.substring(0, bracketIndex);
+      }
+
+      if (modeValue == "Unmodified Forward" || modeValue == "Unmodified") modifier_->setMode(MODE_UNMODIFIED);
+      else if (modeValue == "Off" || modeValue == "Battery Off") modifier_->setMode(MODE_BATTERY_OFF);
+      else if (modeValue == "Force Charge") modifier_->setMode(MODE_FORCE_CHARGE);
+      else if (modeValue == "Force Discharge") modifier_->setMode(MODE_FORCE_DISCHARGE);
+      else if (modeValue == "Power Control") modifier_->setMode(MODE_POWER_CONTROL);
+      else if (modeValue == "Charge Only") modifier_->setMode(MODE_CHARGE_ONLY);
+      else if (modeValue == "Discharge Only") modifier_->setMode(MODE_DISCHARGE_ONLY);
+      else if (modeValue == "External Control") modifier_->setMode(MODE_EXTERNAL_CONTROL);
+      else if (modeValue == "Optimize") modifier_->setMode(MODE_OPTIMIZE);
       
       config_->operationMode = modifier_->getMode();
-      Serial.printf("Mode changed to: %s\n", payloadStr.c_str());
+      Serial.printf("Mode changed to: %s\n", modeValue.c_str());
     }
     else if (command == "battery_phase") {
       int phase = payloadStr.substring(1).toInt(); // Remove 'L' prefix

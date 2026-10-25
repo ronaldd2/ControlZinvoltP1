@@ -159,6 +159,7 @@ String getActualsPage() {
                     <div class="metric-label">Total Power</div>
                     <div class="metric-value" id="totalPower">0<span class="metric-unit">W</span></div>
                     <div id="totalApiMeterDiv" style="font-size: 0.85em; color: #666; margin-top: 4px;">API meter: 0 W</div>
+                    <div id="shellyTotalPowerDiv" class="shelly-data" hidden style="font-size: 0.85em; color: #1f7a1f; margin-top: 4px;"></div>
                     <div id="optimizeSetpointDiv" style="font-size: 0.85em; color: #0c5460; margin-top: 4px;">Setpoint: 0 W</div>
                     <div id="totalModifiedDiv" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="totalModifiedPower">0</strong> W
@@ -167,6 +168,7 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Phase L1 Power</div>
                     <div class="metric-value" id="powerL1">0<span class="metric-unit">W</span></div>
+                    <div id="shellyPowerL1Div" class="shelly-data" hidden style="font-size: 0.85em; color: #1f7a1f; margin-top: 4px;"></div>
                     <div id="modifiedL1Div" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="modifiedPowerL1">0</strong> W
                     </div>
@@ -174,6 +176,7 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Phase L2 Power</div>
                     <div class="metric-value" id="powerL2">0<span class="metric-unit">W</span></div>
+                    <div id="shellyPowerL2Div" class="shelly-data" hidden style="font-size: 0.85em; color: #1f7a1f; margin-top: 4px;"></div>
                     <div id="modifiedL2Div" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="modifiedPowerL2">0</strong> W
                     </div>
@@ -181,6 +184,7 @@ String getActualsPage() {
                 <div class="metric">
                     <div class="metric-label">Phase L3 Power</div>
                     <div class="metric-value" id="powerL3">0<span class="metric-unit">W</span></div>
+                    <div id="shellyPowerL3Div" class="shelly-data" hidden style="font-size: 0.85em; color: #1f7a1f; margin-top: 4px;"></div>
                     <div id="modifiedL3Div" style="font-size: 0.85em; color: #856404; margin-top: 4px; display: none;">
                         Modified: <strong id="modifiedPowerL3">0</strong> W
                     </div>
@@ -194,8 +198,9 @@ String getActualsPage() {
                     <div class="metric-value" id="energyExport">0<span class="metric-unit">kWh</span></div>
                 </div>
                 <div class="metric">
-                    <div class="metric-label">Current L1 / L2 / L3</div>
-                    <div class="metric-value" style="font-size: 1.0em;" id="currentAll">0 / 0 / 0<span class="metric-unit">A</span></div>
+                    <div class="metric-label">P1 Current L1 / L2 / L3</div>
+                    <div class="metric-value" style="font-size: 1.0em;" id="currentAll">-<span class="metric-unit">A</span></div>
+                    <div id="shellyCurrentDiv" class="shelly-data" hidden style="font-size: 0.85em; color: #1f7a1f; margin-top: 4px;"></div>
                 </div>
                 <div class="metric">
                     <div class="metric-label">Current Mode</div>
@@ -208,16 +213,19 @@ String getActualsPage() {
                     <summary style="cursor: pointer; font-weight: 500; color: #666;">⚡ Voltage Details (if available)</summary>
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px;">
                         <div style="padding: 8px; background: white; border-radius: 4px;">
-                            <div style="font-size: 0.9em; color: #888;">L1</div>
+                            <div style="font-size: 0.9em; color: #888;">P1 L1</div>
                             <div style="font-weight: bold;" id="voltageL1">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
+                            <div id="shellyVoltageL1Div" class="shelly-data" hidden style="font-size: 0.78em; color: #1f7a1f; margin-top: 4px;"></div>
                         </div>
                         <div style="padding: 8px; background: white; border-radius: 4px;">
-                            <div style="font-size: 0.9em; color: #888;">L2</div>
+                            <div style="font-size: 0.9em; color: #888;">P1 L2</div>
                             <div style="font-weight: bold;" id="voltageL2">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
+                            <div id="shellyVoltageL2Div" class="shelly-data" hidden style="font-size: 0.78em; color: #1f7a1f; margin-top: 4px;"></div>
                         </div>
                         <div style="padding: 8px; background: white; border-radius: 4px;">
-                            <div style="font-size: 0.9em; color: #888;">L3</div>
+                            <div style="font-size: 0.9em; color: #888;">P1 L3</div>
                             <div style="font-weight: bold;" id="voltageL3">-<span style="font-weight: normal; font-size: 0.9em;"> V</span></div>
+                            <div id="shellyVoltageL3Div" class="shelly-data" hidden style="font-size: 0.78em; color: #1f7a1f; margin-top: 4px;"></div>
                         </div>
                     </div>
                 </details>
@@ -288,6 +296,12 @@ String getActualsPage() {
                     <div class="metric-value" style="font-size: 1.2em;" id="dsmrVersion">-</div>
                 </div>
                 <div class="metric">
+                    <div class="metric-label">Shelly Connection</div>
+                    <div class="metric-value">
+                        <span id="shellyConnectionStatus" class="status-badge status-inactive">No live data</span>
+                    </div>
+                </div>
+                <div class="metric">
                     <div class="metric-label">P1 Interval</div>
                     <div class="metric-value" id="p1Interval">-<span class="metric-unit">s</span></div>
                 </div>
@@ -330,17 +344,48 @@ String getActualsPage() {
             return parts.join(' ');
         }
         
+        function updateShelly(shelly) {
+            const available = shelly && shelly.available === true;
+            const status = document.getElementById('shellyConnectionStatus');
+            status.textContent = available ? 'Live data' : 'No live data';
+            status.className = 'status-badge ' + (available ? 'status-active' : 'status-inactive');
+            document.querySelectorAll('.shelly-data').forEach(element => {
+                element.hidden = !available;
+                if (!available) element.textContent = '';
+            });
+            if (!available) return;
+
+            const power = shelly.power || {};
+            const voltage = shelly.voltage || {};
+            const current = shelly.current || {};
+            const format = (value, decimals) => Number.isFinite(value) ? value.toFixed(decimals) : '-';
+            document.getElementById('shellyTotalPowerDiv').textContent = 'Shelly total: ' + format(power.total, 0) + ' W';
+            ['l1', 'l2', 'l3'].forEach(phase => {
+                const label = phase.toUpperCase();
+                document.getElementById('shellyPower' + label + 'Div').textContent = 'Shelly ' + label + ': ' + format(power[phase], 0) + ' W';
+                document.getElementById('shellyVoltage' + label + 'Div').textContent = 'Shelly: ' + format(voltage[phase], 1) + ' V';
+            });
+            document.getElementById('shellyCurrentDiv').textContent = 'Shelly L1 / L2 / L3: ' +
+                ['l1', 'l2', 'l3'].map(phase => format(current[phase], 2)).join(' / ') + ' A';
+        }
+
         async function fetchData() {
             try {
                 let actualP1TotalW = null;
                 const p1Response = await fetch('/api/p1data');
                 const p1Data = await p1Response.json();
 
+                updateShelly(p1Data.shelly);
+                const current = p1Data.current || {};
+                document.getElementById('currentAll').innerHTML =
+                    (p1Data.valid ? ['l1', 'l2', 'l3'].map(phase =>
+                        Number.isFinite(current[phase]) ? current[phase].toFixed(2) : '-').join(' / ') : '-') +
+                    '<span class="metric-unit">A</span>';
+
                 if (p1Data.valid) {
                     const power = p1Data.power || {};
                     const modPower = p1Data.modifier || {};
                     const energy = p1Data.energy || {};
-                    const current = p1Data.current || { l1: 0, l2: 0, l3: 0 };
                     const voltage = p1Data.voltage || {};
 
                     const originalTotal = Math.round((power.total || 0) * 1000);
@@ -377,20 +422,20 @@ String getActualsPage() {
                     document.getElementById('energyImport').innerHTML = todayImport.toFixed(3) + '<span class="metric-unit">kWh</span>';
                     document.getElementById('energyExport').innerHTML = todayExport.toFixed(3) + '<span class="metric-unit">kWh</span>';
 
-                    document.getElementById('currentAll').innerHTML =
-                        current.l1.toFixed(1) + ' / ' +
-                        current.l2.toFixed(1) + ' / ' +
-                        current.l3.toFixed(1) + '<span class="metric-unit">A</span>';
+                    const voltageL1 = voltage.l1;
+                    const voltageL2 = voltage.l2;
+                    const voltageL3 = voltage.l3;
 
-                    document.getElementById('voltageL1').innerHTML = (voltage.l1 > 0)
-                        ? voltage.l1.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>'
+                    document.getElementById('voltageL1').innerHTML = (voltageL1 > 0)
+                        ? voltageL1.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>'
                         : '-';
-                    document.getElementById('voltageL2').innerHTML = (voltage.l2 > 0)
-                        ? voltage.l2.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>'
+                    document.getElementById('voltageL2').innerHTML = (voltageL2 > 0)
+                        ? voltageL2.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>'
                         : '-';
-                    document.getElementById('voltageL3').innerHTML = (voltage.l3 > 0)
-                        ? voltage.l3.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>'
+                    document.getElementById('voltageL3').innerHTML = (voltageL3 > 0)
+                        ? voltageL3.toFixed(1) + '<span style="font-weight: normal; font-size: 0.9em;"> V</span>'
                         : '-';
+
                 }
 
                 const statusResponse = await fetch('/api/status');

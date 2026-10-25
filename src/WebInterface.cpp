@@ -237,6 +237,28 @@ void WebInterface::handleGetP1Data(AsyncWebServerRequest* request) {
     power["l2"] = config_->actualPowerL2;
     power["l3"] = config_->actualPowerL3;
 
+  JsonObject shelly = doc["shelly"].to<JsonObject>();
+  bool shellyAvailable = config_->shellyDataValid &&
+                         millis() - config_->shellyLastUpdateMs < 30000;
+  shelly["available"] = shellyAvailable;
+  if (shellyAvailable) {
+    JsonObject shellyPower = shelly["power"].to<JsonObject>();
+    shellyPower["total"] = config_->shellyTotalPower;
+    shellyPower["l1"] = config_->shellyPowerL1;
+    shellyPower["l2"] = config_->shellyPowerL2;
+    shellyPower["l3"] = config_->shellyPowerL3;
+
+    JsonObject shellyVoltage = shelly["voltage"].to<JsonObject>();
+    shellyVoltage["l1"] = config_->shellyVoltageL1;
+    shellyVoltage["l2"] = config_->shellyVoltageL2;
+    shellyVoltage["l3"] = config_->shellyVoltageL3;
+
+    JsonObject shellyCurrent = shelly["current"].to<JsonObject>();
+    shellyCurrent["l1"] = config_->shellyCurrentL1;
+    shellyCurrent["l2"] = config_->shellyCurrentL2;
+    shellyCurrent["l3"] = config_->shellyCurrentL3;
+  }
+
     // Modified power data (kept in sync with last processed telegram)
     JsonObject mod = doc["modifier"].to<JsonObject>();
     mod["total"] = config_->totalModifiedPower;

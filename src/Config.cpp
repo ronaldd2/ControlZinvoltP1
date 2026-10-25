@@ -43,6 +43,18 @@ void Config::reset() {
   actualPowerL2 = 0.0;
   actualPowerL3 = 0.0;
   actualTotalPower = 0.0;
+  shellyDataValid = false;
+  shellyPowerL1 = 0.0;
+  shellyPowerL2 = 0.0;
+  shellyPowerL3 = 0.0;
+  shellyTotalPower = 0.0;
+  shellyVoltageL1 = 0.0;
+  shellyVoltageL2 = 0.0;
+  shellyVoltageL3 = 0.0;
+  shellyCurrentL1 = 0.0;
+  shellyCurrentL2 = 0.0;
+  shellyCurrentL3 = 0.0;
+  shellyLastUpdateMs = 0;
   mqttServer = "";
   mqttPort = 1883;
   mqttUser = "";
@@ -128,6 +140,18 @@ void Config::load(Preferences& prefs) {
   actualPowerL2 = 0.0f;
   actualPowerL3 = 0.0f;
   actualTotalPower = 0.0f;
+  shellyDataValid = false;
+  shellyPowerL1 = 0.0f;
+  shellyPowerL2 = 0.0f;
+  shellyPowerL3 = 0.0f;
+  shellyTotalPower = 0.0f;
+  shellyVoltageL1 = 0.0f;
+  shellyVoltageL2 = 0.0f;
+  shellyVoltageL3 = 0.0f;
+  shellyCurrentL1 = 0.0f;
+  shellyCurrentL2 = 0.0f;
+  shellyCurrentL3 = 0.0f;
+  shellyLastUpdateMs = 0;
   
     // Load daily baseline (persisted once per day)
     dayStartDate = prefs.getString("dayStartDate", "");

@@ -60,6 +60,21 @@ String P1Modifier::getModeString() const {
   }
 }
 
+String P1Modifier::getModeName() const {
+  switch (current_mode_) {
+    case MODE_UNMODIFIED: return "Unmodified Forward";
+    case MODE_BATTERY_OFF: return "Off";
+    case MODE_FORCE_CHARGE: return "Force Charge";
+    case MODE_FORCE_DISCHARGE: return "Force Discharge";
+    case MODE_POWER_CONTROL: return "Power Control";
+    case MODE_CHARGE_ONLY: return "Charge Only";
+    case MODE_DISCHARGE_ONLY: return "Discharge Only";
+    case MODE_EXTERNAL_CONTROL: return "External Control";
+    case MODE_OPTIMIZE: return "Optimize";
+    default: return "Unknown";
+  }
+}
+
 void P1Modifier::calculateOptimizeSetpoint() {
   if (!config_) {
     return;

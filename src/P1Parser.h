@@ -86,6 +86,7 @@ public:
   // CRC validation and calculation
   static String calculateCRC16(const String& data);
   static bool validateCRC(const String& telegram);
+  static String updateVoltageValues(const String& telegram, float voltageL1, float voltageL2, float voltageL3);
   
 private:
   // Parsed data fields

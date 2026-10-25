@@ -6,6 +6,7 @@
 #include "BatteryApiSelector.h"
 #include "HomeAssistant.h"
 #include <Preferences.h>
+#include <freertos/semphr.h>
 
 // Hardware Serial for P1 Port (ESP32-S3)
 #define P1_SERIAL Serial1
@@ -20,10 +21,53 @@ extern HomeAssistant homeAssistant;
 void acceptTCPClients();
 void broadcastP1Data(const String& telegram);
 
+static SemaphoreHandle_t telegramMutex = xSemaphoreCreateMutex();
+
+static String applyShellyMeasurements(const String& telegram) {
+  String updated = P1Parser::updateVoltageValues(telegram, config.shellyVoltageL1,
+                                                 config.shellyVoltageL2, config.shellyVoltageL3);
+  auto replaceValue = [&updated](const char* obisCode, float value, unsigned int decimals) {
+    int startIndex = updated.indexOf(obisCode);
+    if (startIndex < 0) return;
+    int openParen = updated.indexOf('(', startIndex);
+    int closeParen = updated.indexOf(')', openParen);
+    if (openParen < 0 || closeParen < 0) return;
+    int unitIndex = updated.indexOf('*', openParen);
+    String unit = (unitIndex >= 0 && unitIndex < closeParen) ? updated.substring(unitIndex, closeParen) : "";
+    updated = updated.substring(0, openParen + 1) + String(value, decimals) + unit + updated.substring(closeParen);
+  };
+  auto replacePower = [&replaceValue](const char* importCode, const char* exportCode, float watts) {
+    replaceValue(importCode, watts > 0 ? watts / 1000.0f : 0.0f, 3);
+    replaceValue(exportCode, watts < 0 ? -watts / 1000.0f : 0.0f, 3);
+  };
+  replacePower("1-0:1.7.0", "1-0:2.7.0", config.shellyTotalPower);
+  replacePower("1-0:21.7.0", "1-0:22.7.0", config.shellyPowerL1);
+  replacePower("1-0:41.7.0", "1-0:42.7.0", config.shellyPowerL2);
+  replacePower("1-0:61.7.0", "1-0:62.7.0", config.shellyPowerL3);
+  replaceValue("1-0:31.7.0", config.shellyCurrentL1, 2);
+  replaceValue("1-0:51.7.0", config.shellyCurrentL2, 2);
+  replaceValue("1-0:71.7.0", config.shellyCurrentL3, 2);
+  int crcPosition = updated.lastIndexOf('!');
+  if (crcPosition >= 0) {
+    String crcData = updated.substring(0, crcPosition + 1);
+    updated = crcData + P1Parser::calculateCRC16(crcData) + "\r\n";
+  }
+  return updated;
+}
+
 void readP1Task(void* parameter) {
+  if (telegramMutex == nullptr) {
+    logPrintln("[READ] Failed to allocate telegram mutex");
+    vTaskDelete(nullptr);
+    return;
+  }
   String buffer = "";
   unsigned long lastDebugTime = 0;
   unsigned long lastDataTime = 0;
+  unsigned long lastTcpBroadcastMs = 0;
+  bool hasTcpBroadcast = false;
+  bool pendingTcpTelegram = false;
+  String tcpTelegram;
   int telegramCount = 0;
   bool inTelegram = false;
   int crcCharsRead = 0;
@@ -81,8 +125,6 @@ void readP1Task(void* parameter) {
             logPrint(String(buffer.length()));
             logPrintln(" bytes)");
             
-            digitalWrite(LED_PIN, HIGH);
-            
             // Validate CRC first before any processing
             bool crcValid = false;
             try {
@@ -97,7 +139,6 @@ void readP1Task(void* parameter) {
               buffer = "";
               inTelegram = false;
               crcCharsRead = 0;
-              digitalWrite(LED_PIN, LOW);
               continue;
             }
             
@@ -129,8 +170,8 @@ void readP1Task(void* parameter) {
               logPrintln(" kWh)");
             }
             
-            // Broadcast only valid telegrams
-            broadcastP1Data(buffer);
+            tcpTelegram = buffer;
+            pendingTcpTelegram = true;
             
             // Request battery API fetch (non-blocking, will be processed in main loop)
             if (config.evaEnabled) {
@@ -139,34 +180,23 @@ void readP1Task(void* parameter) {
             
             homeAssistant.requestPublish();
             
-            String modifiedTelegram = p1Modifier.modify(buffer, p1Parser, config.gridPower);
-            
-            P1Parser modifiedParser;
-            modifiedParser.parse(modifiedTelegram);
-            config.modifiedPowerL1 = modifiedParser.getActivePowerL1();
-            config.modifiedPowerL2 = modifiedParser.getActivePowerL2();
-            config.modifiedPowerL3 = modifiedParser.getActivePowerL3();
-            config.totalModifiedPower = modifiedParser.getTotalActivePower();
-
             config.actualPowerL1 = p1Parser.getActivePowerL1();
             config.actualPowerL2 = p1Parser.getActivePowerL2();
             config.actualPowerL3 = p1Parser.getActivePowerL3();
             config.actualTotalPower = p1Parser.getTotalActivePower();
             
-            currentP1Telegram = modifiedTelegram;
+            xSemaphoreTake(telegramMutex, portMAX_DELAY);
+            currentP1Telegram = buffer;
             telegramComplete = true;
             telegramSent = false;
+            xSemaphoreGive(telegramMutex);
             
-            logPrint("[READ] Telegram processed - Original: ");
+            logPrint("[READ] Telegram queued for relay: ");
             logPrint(String(buffer.length()));
-            logPrint(" bytes, Modified: ");
-            logPrint(String(modifiedTelegram.length()));
             logPrintln(" bytes");
             
             logPrintln("[READ] P1 telegram received and processed");
 
-            digitalWrite(LED_PIN, LOW);
-            
             buffer = "";
             inTelegram = false;
             crcCharsRead = 0;
@@ -182,12 +212,37 @@ void readP1Task(void* parameter) {
       }
     }
     
+    unsigned long now = millis();
+    bool shellyAvailable = config.shellyDataValid && now - config.shellyLastUpdateMs < 30000;
+    bool tcpOutputDue = shellyAvailable ? (!hasTcpBroadcast || now - lastTcpBroadcastMs >= 1000) :
+                                         pendingTcpTelegram;
+    if (!tcpTelegram.isEmpty() && tcpOutputDue) {
+      String actualTelegram = shellyAvailable ? applyShellyMeasurements(tcpTelegram) : tcpTelegram;
+      if (P1Parser::validateCRC(actualTelegram)) {
+        broadcastP1Data(actualTelegram);
+      } else {
+        logPrintln("[READ] Invalid TCP output CRC; telegram not broadcast");
+      }
+      lastTcpBroadcastMs = millis();
+      hasTcpBroadcast = true;
+      pendingTcpTelegram = false;
+    }
+
     vTaskDelay(1 / portTICK_PERIOD_MS);
   }
 }
 
 void relayP1Task(void* parameter) {
+  if (telegramMutex == nullptr) {
+    logPrintln("[RELAY] Failed to allocate telegram mutex");
+    vTaskDelete(nullptr);
+    return;
+  }
   unsigned long lastDebugTime = 0;
+  unsigned long lastSendMs = 0;
+  bool hasSent = false;
+  bool pendingTelegram = false;
+  String meterTelegram;
   
   logPrintln("[RELAY] Task started");
   
@@ -202,21 +257,53 @@ void relayP1Task(void* parameter) {
       lastDebugTime = millis();
     }
     
-    if (telegramComplete && !telegramSent) {
-      logPrintln("[RELAY] Processing telegram for transmission");
-      
-      bool canSend = !config.useTxReq || (digitalRead(TX_REQ_PIN) == HIGH);
-      
-      if (canSend) {
-        logPrintln("[RELAY] Sending modified telegram...");
-        P1_SERIAL.print(currentP1Telegram);
-        
-        telegramSent = true;
-        telegramComplete = false;
-        
-        logPrintln("[RELAY] Modified P1 telegram sent");
+    xSemaphoreTake(telegramMutex, portMAX_DELAY);
+    if (telegramComplete) {
+      meterTelegram = currentP1Telegram;
+      pendingTelegram = true;
+      telegramComplete = false;
+    }
+    xSemaphoreGive(telegramMutex);
+
+    unsigned long now = millis();
+    bool shellyAvailable = config.shellyDataValid && now - config.shellyLastUpdateMs < 30000;
+    bool outputDue = shellyAvailable ? (!hasSent || now - lastSendMs >= 1000) : pendingTelegram;
+    bool canSend = !config.useTxReq || digitalRead(TX_REQ_PIN) == HIGH;
+
+    if (!meterTelegram.isEmpty() && outputDue && canSend) {
+      String sourceTelegram = shellyAvailable ? applyShellyMeasurements(meterTelegram) : meterTelegram;
+      P1Parser sourceParser;
+      sourceParser.parse(sourceTelegram);
+      String modifiedTelegram = p1Modifier.modify(sourceTelegram, sourceParser, config.gridPower);
+      int crcPosition = modifiedTelegram.lastIndexOf('!');
+      if (crcPosition >= 0) {
+        String crcData = modifiedTelegram.substring(0, crcPosition + 1);
+        modifiedTelegram = crcData + P1Parser::calculateCRC16(crcData) + "\r\n";
+      }
+
+      if (P1Parser::validateCRC(modifiedTelegram)) {
+        digitalWrite(LED_PIN, HIGH);
+        P1_SERIAL.print(modifiedTelegram);
+        P1_SERIAL.flush();
+        digitalWrite(LED_PIN, LOW);
+        lastSendMs = millis();
+        hasSent = true;
+        pendingTelegram = false;
+        xSemaphoreTake(telegramMutex, portMAX_DELAY);
+        if (!telegramComplete) telegramSent = true;
+        xSemaphoreGive(telegramMutex);
+
+        P1Parser modifiedParser;
+        modifiedParser.parse(modifiedTelegram);
+        config.modifiedPowerL1 = modifiedParser.getActivePowerL1();
+        config.modifiedPowerL2 = modifiedParser.getActivePowerL2();
+        config.modifiedPowerL3 = modifiedParser.getActivePowerL3();
+        config.totalModifiedPower = modifiedParser.getTotalActivePower();
+        homeAssistant.requestPublish();
+        logPrintln(shellyAvailable ? "[RELAY] Shelly-driven P1 telegram sent (1 second interval)" :
+                                   "[RELAY] Meter-driven P1 telegram sent");
       } else {
-        logPrintln("[RELAY] Waiting for TX_REQ to go HIGH");
+        logPrintln("[RELAY] Invalid output CRC; telegram not sent");
       }
     }
     

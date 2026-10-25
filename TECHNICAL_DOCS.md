@@ -20,6 +20,16 @@ Smart Meter (P1 Out) → ESP32-S3 (Modify) → P1 Dongle → Zinvolt VT1000
 5. **ESP32-S3** sends modified telegram on GPIO43 (TX)
 6. **Zinvolt VT1000** receives modified data and adjusts battery behavior
 
+### Shelly-Assisted Output
+
+- Without fresh Shelly measurements, serial P1 output follows incoming meter telegrams.
+- After receiving at least one CRC-valid meter telegram, fresh Shelly data enables serial output once per second, subject to TX_REQ when enabled.
+- Each output uses the latest meter telegram as a template, replaces existing power, voltage and current OBIS values with Shelly measurements, then applies the configured control mode. CRC is recalculated and validated before transmission.
+- Meter timestamps and cumulative energy counters remain from the last real meter telegram; they are not synthesized.
+- TCP port 9988 broadcasts actual measurements once per second while Shelly data is fresh, independently of TX_REQ. It replaces total and phase power, phase voltage and phase current with Shelly readings, without calling `P1Modifier::modify`. Meter timestamps and all kWh counters remain unchanged, and CRC is recalculated and validated. After Shelly data expires, it broadcasts original P1 input only on incoming meter telegrams.
+- Shelly data expires 30 seconds after the last valid measurement update. Output then returns to incoming-meter timing.
+- The Actuals page shows Shelly availability in System Information and hides Shelly measurements when unavailable. P1 dashboard measurements remain meter-sourced.
+
 ## DSMR P1 Protocol
 
 ### Important OBIS Codes

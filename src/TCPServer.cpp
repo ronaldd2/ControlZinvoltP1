@@ -7,9 +7,9 @@
 void setupTCPServer() {
   logPrintln("Setting up TCP servers for P1 streaming...");
   
-  // Original P1 data server (sync WiFiServer)
+  // Actual P1/Shelly measurements server (sync WiFiServer)
   tcpServer.begin();
-  logPrint("TCP server (original) started on port ");
+  logPrint("TCP server (actual measurements) started on port ");
   logPrintln(String(P1_TCP_PORT));
 }
 
@@ -36,7 +36,7 @@ void acceptTCPClients() {
 }
 
 void broadcastP1Data(const String& telegram) {
-  // Broadcast to all connected TCP clients (original data)
+  // Broadcast actual measurements without control-mode modifications
   if (tcpClients.empty()) return;
   
   for (auto it = tcpClients.begin(); it != tcpClients.end(); ) {
