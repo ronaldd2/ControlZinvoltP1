@@ -40,7 +40,14 @@ static String applyShellyMeasurements(const String& telegram) {
     replaceValue(importCode, watts > 0 ? watts / 1000.0f : 0.0f, 3);
     replaceValue(exportCode, watts < 0 ? -watts / 1000.0f : 0.0f, 3);
   };
-  replacePower("1-0:1.7.0", "1-0:2.7.0", config.shellyTotalPower);
+  float totalImportW = max(0.0f, config.shellyPowerL1) +
+                       max(0.0f, config.shellyPowerL2) +
+                       max(0.0f, config.shellyPowerL3);
+  float totalExportW = -min(0.0f, config.shellyPowerL1) -
+                       min(0.0f, config.shellyPowerL2) -
+                       min(0.0f, config.shellyPowerL3);
+  replaceValue("1-0:1.7.0", totalImportW / 1000.0f, 3);
+  replaceValue("1-0:2.7.0", totalExportW / 1000.0f, 3);
   replacePower("1-0:21.7.0", "1-0:22.7.0", config.shellyPowerL1);
   replacePower("1-0:41.7.0", "1-0:42.7.0", config.shellyPowerL2);
   replacePower("1-0:61.7.0", "1-0:62.7.0", config.shellyPowerL3);
